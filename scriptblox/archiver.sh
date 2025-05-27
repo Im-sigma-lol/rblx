@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Prompt or accept username
+# Username input
 for arg in "$@"; do
     case $arg in
         -username=*|-user=*|-usr=*)
@@ -13,86 +13,62 @@ if [ -z "$username" ]; then
     read -p "Enter ScriptBlox username: " username
 fi
 
-# Create account folder structure
+# Folder structure
 account_dir="${username}"
 scripts_dir="${account_dir}/scripts"
 images_dir="${account_dir}/images"
 json_file="${account_dir}/user.json"
 mkdir -p "$scripts_dir" "$images_dir"
 
-# Clean filenames
+# Clean titles for filesystem
 clean_name() {
-    echo "$1" | sed 's#[<>:"/\\|?*]# #g'
+    echo "$1" | sed 's#[<>:"/\\|?*]#_#g'
 }
 
-# Download from URL safely
-safe_download() {
-    url="$1"
-    out="$2"
-    if [[ ! -f "$out" ]]; then
-        echo "  - Downloading: $out"
-        curl -sL --fail "$url" -o "$out" || echo "    [!] Failed to download: $url"
-    fi
+# Scrape raw script from HTML page
+get_raw_script_from_page() {
+    slug="$1"
+    html=$(curl -s "https://scriptblox.com/script/$slug")
+    echo "$html" | grep -oP '"code":"\K(.*?)(?=")' | sed 's#\\n#\n#g; s#\\t#\t#g; s#\\"#"#g'
 }
 
 # Get total pages
-echo "[*] Fetching page count..."
-initial_url="https://scriptblox.com/api/user/scripts/$username?page=1"
-initial_data=$(curl -s "$initial_url")
-total_pages=$(echo "$initial_data" | jq -r '.result.totalPages')
+echo "[*] Getting pages..."
+initial=$(curl -s "https://scriptblox.com/api/user/scripts/$username?page=1")
+echo "$initial" > "$json_file"
+total_pages=$(echo "$initial" | jq -r '.result.totalPages')
 
 if [[ "$total_pages" == "null" || -z "$total_pages" ]]; then
-    echo "[!] Could not get total pages. Check if the username exists."
+    echo "[!] No scripts found or username invalid."
     exit 1
 fi
 
-echo "[*] Total pages: $total_pages"
-echo "$initial_data" > "$json_file"
-
-# Loop through pages
+# Process all pages
 for ((page=1; page<=total_pages; page++)); do
-    echo "[*] Processing page $page..."
-
+    echo "[*] Page $page"
     data=$(curl -s "https://scriptblox.com/api/user/scripts/$username?page=$page")
     echo "$data" | jq -c '.result.scripts[]' | while read -r script; do
         slug=$(echo "$script" | jq -r '.slug')
         title=$(echo "$script" | jq -r '.title')
+        image=$(echo "$script" | jq -r '.image')
         clean_title=$(clean_name "$title")
+        script_folder="${scripts_dir}/${slug}"
+        mkdir -p "$script_folder"
 
-        echo "  - Archiving: $clean_title"
-        script_path="${scripts_dir}/${slug}/${clean_title}.lua"
-        mkdir -p "$(dirname "$script_path")"
+        # Extract script from webpage
+        echo "  - Archiving: $title"
+        raw_code=$(get_raw_script_from_page "$slug")
 
-        # Get script source
-        src=$(curl -s "https://scriptblox.com/api/script/$slug")
-        code=$(echo "$src" | jq -r '.result.code')
-
-        if [[ "$code" == "null" || -z "$code" ]]; then
-            fallback_url="https://rawscripts.net/raw/$title"
-            echo "    [!] ScriptBlox null, trying fallback: $fallback_url"
-            curl -sL "$fallback_url" -o "$script_path" || echo "    [!] Failed fallback too"
+        if [[ -z "$raw_code" ]]; then
+            echo "    [!] Script code not found, skipping."
         else
-            echo "$code" > "$script_path"
+            echo "$raw_code" > "$script_folder/$clean_title.lua"
         fi
 
-        # Get image
-        image=$(echo "$script" | jq -r '.image')
-        if [[ "$image" == http* ]]; then
-            # Full URL
-            img_id=$(basename "$image" | cut -d'/' -f1)
-            ext="${image##*.}"
-            out_image="${images_dir}/${img_id}.${ext}"
-            safe_download "$image" "$out_image"
-        elif [[ "$image" == /images/* ]]; then
-            # ScriptBlox path
-            full_url="https://scriptblox.com$image"
-            image_name=$(basename "$image")
-            image_slug=$(clean_name "$slug")
-            out_image="${images_dir}/${image_slug}/${image_name}"
-            mkdir -p "$(dirname "$out_image")"
-            safe_download "$full_url" "$out_image"
-        else
-            echo "    [!] Unknown image format: $image"
+        # Skip image download due to 403s
+        # Placeholder: Save image URL in case future proxy solution found
+        if [[ "$image" != "null" ]]; then
+            echo "$image" > "$script_folder/image.txt"
         fi
     done
 done
