@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Required tools check
-command -v jq >/dev/null || { echo "Missing: jq. Install with 'pkg install jq'"; exit 1; }
-command -v curl >/dev/null || { echo "Missing: curl. Install with 'pkg install curl'"; exit 1; }
+# Check dependencies
+command -v jq >/dev/null || { echo "Missing jq. Install with: pkg install jq"; exit 1; }
+command -v curl >/dev/null || { echo "Missing curl. Install with: pkg install curl"; exit 1; }
 
-# Parse username from args or prompt
+# Parse args or ask
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -usr=*|-user=*|-username=*)
@@ -16,26 +16,24 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ask if not provided
 if [[ -z "$username" ]]; then
     read -rp "Enter ScriptBlox username: " username
 fi
 
 # Setup folders
-mkdir -p "scripts" "images/script"
+mkdir -p "scripts" "images"
 
-# Empty metadata JSON file
+# Output metadata
 user_json="user.json"
 > "$user_json"
 
-# Start scraping
 page=1
 total_pages=1
 
 while (( page <= total_pages )); do
-    echo "Fetching page $page of scripts for $username..."
-    api_url="https://scriptblox.com/api/user/scripts/$username?page=$page"
-    json=$(curl -s "$api_url")
+    echo "Fetching page $page..."
+    api="https://scriptblox.com/api/user/scripts/$username?page=$page"
+    json=$(curl -s "$api")
 
     if [[ $page -eq 1 ]]; then
         total_pages=$(echo "$json" | jq '.result.totalPages')
@@ -49,49 +47,55 @@ while (( page <= total_pages )); do
         slug=$(echo "$script" | jq -r '.slug')
         image=$(echo "$script" | jq -r '.image')
 
-        safe_title=$(echo "$title" | tr -cd '[:alnum:]_-' | cut -c1-50)
+        # Sanitize title
+        safe_title=$(echo "$title" | sed 's#[<>:"/\\|?*]# #g' | tr -s ' ' | cut -c1-50)
         slug_folder="scripts/$slug"
         mkdir -p "$slug_folder"
 
-        # Try to fetch script code from main API
+        # Script code
         script_code=$(curl -s "https://scriptblox.com/api/script/script/$slug" | jq -r '.result.script')
-
-        # Fallback to rawscripts.net if null or empty
         if [[ -z "$script_code" || "$script_code" == "null" ]]; then
             script_code=$(curl -s "https://rawscripts.net/raw/$slug")
         fi
 
-        # Save script code if non-empty
         if [[ -n "$script_code" && "$script_code" != "null" ]]; then
             script_file="$slug_folder/$safe_title.lua"
             echo "$script_code" > "$script_file"
-            echo "Saved: $script_file"
+            echo "Saved script: $script_file"
         else
-            echo "Warning: Script code not found for $slug"
+            echo "Warning: Script for $slug not found"
         fi
 
-        # Download image if valid
+        # IMAGE HANDLING
+        image_folder="images/$slug"
+        mkdir -p "$image_folder"
+
         if [[ "$image" != "null" && "$image" != "/images/no-script.webp" ]]; then
-            # Full image URL
+            # Full image URL resolution
             if [[ "$image" == http* ]]; then
                 image_url="$image"
+
+                # Extract hash and extension
+                hash=$(echo "$image_url" | grep -oP 'tr\.rbxcdn\.com/\K[^/]+')
+                ext=$(echo "$image_url" | grep -oP '/Image/\K\w+')
+                [[ -z "$ext" ]] && ext="jpg"  # fallback default
+
+                image_name="${hash}.${ext}"
             else
-                image_url="https://scriptblox.com$image"
+                image_url="https://scriptblox.com${image}"
+                image_name=$(basename "$image_url")
             fi
-            image_name=$(basename "$image_url")
-            image_folder="images/$slug"
-            mkdir -p "$image_folder"
+
             image_dest="$image_folder/$image_name"
 
-            # Download if not already
             if [[ ! -f "$image_dest" || ! -s "$image_dest" ]]; then
                 echo "Downloading image for $slug..."
                 curl -s "$image_url" -o "$image_dest"
                 if [[ ! -s "$image_dest" ]]; then
-                    echo "  - Failed to download image: $image_url"
+                    echo "  - Failed: $image_url"
                     rm -f "$image_dest"
                 else
-                    echo "  - Image saved: $image_dest"
+                    echo "  - Saved: $image_dest"
                 fi
             fi
         fi
@@ -100,5 +104,4 @@ while (( page <= total_pages )); do
     ((page++))
 done
 
-# Final summary
-echo "Done. Scripts: $(find scripts -type f | wc -l), Images: $(find images -type f | wc -l)"
+echo "Finished. Scripts: $(find scripts -type f | wc -l), Images: $(find images -type f | wc -l)"
