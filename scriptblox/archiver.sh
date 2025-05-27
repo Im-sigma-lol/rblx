@@ -1,76 +1,63 @@
-#!/bin/bash
+#!/data/data/com.termux/files/usr/bin/bash
 
-# Username input
-for arg in "$@"; do
-    case $arg in
-        -username=*|-user=*|-usr=*)
-            username="${arg#*=}"
-            ;;
-    esac
-done
+# Ensure required tools
+command -v jq >/dev/null || { echo "jq is required"; exit 1; }
 
-if [ -z "$username" ]; then
+# Prompt for username if not provided
+if [[ "$1" =~ ^-username=.+$ ]]; then
+    username="${1#*=}"
+else
     read -p "Enter ScriptBlox username: " username
 fi
 
-# Folder structure
-account_dir="${username}"
-scripts_dir="${account_dir}/scripts"
-images_dir="${account_dir}/images"
-json_file="${account_dir}/user.json"
-mkdir -p "$scripts_dir" "$images_dir"
+account_dir="roblox/$username"
+mkdir -p "$account_dir/scripts" "$account_dir/images"
 
-# Clean titles for filesystem
-clean_name() {
-    echo "$1" | sed 's#[<>:"/\\|?*]#_#g'
-}
+# Fetch user data
+user_json="$account_dir/user.json"
+echo "[*] Fetching user data..."
+wget -q --show-progress "https://scriptblox.com/api/user/scripts/$username" -O "$user_json"
 
-# Scrape raw script from HTML page
-get_raw_script_from_page() {
-    slug="$1"
-    html=$(curl -s "https://scriptblox.com/script/$slug")
-    echo "$html" | grep -oP '"code":"\K(.*?)(?=")' | sed 's#\\n#\n#g; s#\\t#\t#g; s#\\"#"#g'
-}
+# Parse and process each script
+jq -c '.data[]' "$user_json" | while read -r entry; do
+    slug=$(echo "$entry" | jq -r '.slug')
+    title=$(echo "$entry" | jq -r '.title' | sed 's#[\\/:"*?<>|]# #g')
+    image_url=$(echo "$entry" | jq -r '.image')
 
-# Get total pages
-echo "[*] Getting pages..."
-initial=$(curl -s "https://scriptblox.com/api/user/scripts/$username?page=1")
-echo "$initial" > "$json_file"
-total_pages=$(echo "$initial" | jq -r '.result.totalPages')
+    echo "- Archiving: $title"
 
-if [[ "$total_pages" == "null" || -z "$total_pages" ]]; then
-    echo "[!] No scripts found or username invalid."
-    exit 1
-fi
+    # Create slug folder
+    mkdir -p "$account_dir/scripts/$slug" "$account_dir/images/$slug"
 
-# Process all pages
-for ((page=1; page<=total_pages; page++)); do
-    echo "[*] Page $page"
-    data=$(curl -s "https://scriptblox.com/api/user/scripts/$username?page=$page")
-    echo "$data" | jq -c '.result.scripts[]' | while read -r script; do
-        slug=$(echo "$script" | jq -r '.slug')
-        title=$(echo "$script" | jq -r '.title')
-        image=$(echo "$script" | jq -r '.image')
-        clean_title=$(clean_name "$title")
-        script_folder="${scripts_dir}/${slug}"
-        mkdir -p "$script_folder"
+    # Download script code from slug
+    script_api="https://scriptblox.com/api/script/$slug"
+    script_json=$(wget -qO- "$script_api")
+    script_code=$(echo "$script_json" | jq -r '.data.script')
 
-        # Extract script from webpage
-        echo "  - Archiving: $title"
-        raw_code=$(get_raw_script_from_page "$slug")
+    if [[ "$script_code" == "null" || -z "$script_code" ]]; then
+        echo "    [!] Script code not found, skipping."
+    else
+        echo "$script_code" > "$account_dir/scripts/$slug/$title.lua"
+        echo "    [+] Script saved."
+    fi
 
-        if [[ -z "$raw_code" ]]; then
-            echo "    [!] Script code not found, skipping."
-        else
-            echo "$raw_code" > "$script_folder/$clean_title.lua"
-        fi
+    # Process image
+    if [[ "$image_url" == "null" || -z "$image_url" ]]; then
+        continue
+    fi
 
-        # Skip image download due to 403s
-        # Placeholder: Save image URL in case future proxy solution found
-        if [[ "$image" != "null" ]]; then
-            echo "$image" > "$script_folder/image.txt"
-        fi
-    done
+    if [[ "$image_url" == *"rbxcdn.com"* ]]; then
+        hash=$(echo "$image_url" | cut -d/ -f4)
+        image_path="$account_dir/images/$slug/$hash.jpg"
+    else
+        filename=$(basename "$image_url")
+        image_path="$account_dir/images/$slug/$filename"
+    fi
+
+    wget -q --show-progress --timeout=10 "$image_url" -O "$image_path" || {
+        echo "    [!] Failed to download: $image_url"
+        rm -f "$image_path"
+    }
 done
 
 echo "[✓] Done! Files saved under: $account_dir"
