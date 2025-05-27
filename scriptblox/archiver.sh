@@ -1,107 +1,100 @@
 #!/bin/bash
 
-# Check dependencies
-command -v jq >/dev/null || { echo "Missing jq. Install with: pkg install jq"; exit 1; }
-command -v curl >/dev/null || { echo "Missing curl. Install with: pkg install curl"; exit 1; }
-
-# Parse args or ask
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -usr=*|-user=*|-username=*)
-            username="${1#*=}"; shift ;;
-        -usr|-user|-username)
-            username="$2"; shift 2 ;;
-        *)
-            echo "Unknown option: $1"; exit 1 ;;
+# Prompt or accept username
+for arg in "$@"; do
+    case $arg in
+        -username=*|-user=*|-usr=*)
+            username="${arg#*=}"
+            ;;
     esac
 done
 
-if [[ -z "$username" ]]; then
-    read -rp "Enter ScriptBlox username: " username
+if [ -z "$username" ]; then
+    read -p "Enter ScriptBlox username: " username
 fi
 
-# Setup folders
-mkdir -p "scripts" "images"
+# Create account folder structure
+account_dir="${username}"
+scripts_dir="${account_dir}/scripts"
+images_dir="${account_dir}/images"
+json_file="${account_dir}/user.json"
+mkdir -p "$scripts_dir" "$images_dir"
 
-# Output metadata
-user_json="user.json"
-> "$user_json"
+# Clean filenames
+clean_name() {
+    echo "$1" | sed 's#[<>:"/\\|?*]# #g'
+}
 
-page=1
-total_pages=1
-
-while (( page <= total_pages )); do
-    echo "Fetching page $page..."
-    api="https://scriptblox.com/api/user/scripts/$username?page=$page"
-    json=$(curl -s "$api")
-
-    if [[ $page -eq 1 ]]; then
-        total_pages=$(echo "$json" | jq '.result.totalPages')
-        echo "Total pages: $total_pages"
+# Download from URL safely
+safe_download() {
+    url="$1"
+    out="$2"
+    if [[ ! -f "$out" ]]; then
+        echo "  - Downloading: $out"
+        curl -sL --fail "$url" -o "$out" || echo "    [!] Failed to download: $url"
     fi
+}
 
-    echo "$json" | jq '.result.scripts[]' >> "$user_json"
+# Get total pages
+echo "[*] Fetching page count..."
+initial_url="https://scriptblox.com/api/user/scripts/$username?page=1"
+initial_data=$(curl -s "$initial_url")
+total_pages=$(echo "$initial_data" | jq -r '.result.totalPages')
 
-    echo "$json" | jq -c '.result.scripts[]' | while read -r script; do
-        title=$(echo "$script" | jq -r '.title')
+if [[ "$total_pages" == "null" || -z "$total_pages" ]]; then
+    echo "[!] Could not get total pages. Check if the username exists."
+    exit 1
+fi
+
+echo "[*] Total pages: $total_pages"
+echo "$initial_data" > "$json_file"
+
+# Loop through pages
+for ((page=1; page<=total_pages; page++)); do
+    echo "[*] Processing page $page..."
+
+    data=$(curl -s "https://scriptblox.com/api/user/scripts/$username?page=$page")
+    echo "$data" | jq -c '.result.scripts[]' | while read -r script; do
         slug=$(echo "$script" | jq -r '.slug')
-        image=$(echo "$script" | jq -r '.image')
+        title=$(echo "$script" | jq -r '.title')
+        clean_title=$(clean_name "$title")
 
-        # Sanitize title
-        safe_title=$(echo "$title" | sed 's#[<>:"/\\|?*]# #g' | tr -s ' ' | cut -c1-50)
-        slug_folder="scripts/$slug"
-        mkdir -p "$slug_folder"
+        echo "  - Archiving: $clean_title"
+        script_path="${scripts_dir}/${slug}/${clean_title}.lua"
+        mkdir -p "$(dirname "$script_path")"
 
-        # Script code
-        script_code=$(curl -s "https://scriptblox.com/api/script/script/$slug" | jq -r '.result.script')
-        if [[ -z "$script_code" || "$script_code" == "null" ]]; then
-            script_code=$(curl -s "https://rawscripts.net/raw/$slug")
-        fi
+        # Get script source
+        src=$(curl -s "https://scriptblox.com/api/script/$slug")
+        code=$(echo "$src" | jq -r '.result.code')
 
-        if [[ -n "$script_code" && "$script_code" != "null" ]]; then
-            script_file="$slug_folder/$safe_title.lua"
-            echo "$script_code" > "$script_file"
-            echo "Saved script: $script_file"
+        if [[ "$code" == "null" || -z "$code" ]]; then
+            fallback_url="https://rawscripts.net/raw/$title"
+            echo "    [!] ScriptBlox null, trying fallback: $fallback_url"
+            curl -sL "$fallback_url" -o "$script_path" || echo "    [!] Failed fallback too"
         else
-            echo "Warning: Script for $slug not found"
+            echo "$code" > "$script_path"
         fi
 
-        # IMAGE HANDLING
-        image_folder="images/$slug"
-        mkdir -p "$image_folder"
-
-        if [[ "$image" != "null" && "$image" != "/images/no-script.webp" ]]; then
-            # Full image URL resolution
-            if [[ "$image" == http* ]]; then
-                image_url="$image"
-
-                # Extract hash and extension
-                hash=$(echo "$image_url" | grep -oP 'tr\.rbxcdn\.com/\K[^/]+')
-                ext=$(echo "$image_url" | grep -oP '/Image/\K\w+')
-                [[ -z "$ext" ]] && ext="jpg"  # fallback default
-
-                image_name="${hash}.${ext}"
-            else
-                image_url="https://scriptblox.com${image}"
-                image_name=$(basename "$image_url")
-            fi
-
-            image_dest="$image_folder/$image_name"
-
-            if [[ ! -f "$image_dest" || ! -s "$image_dest" ]]; then
-                echo "Downloading image for $slug..."
-                curl -s "$image_url" -o "$image_dest"
-                if [[ ! -s "$image_dest" ]]; then
-                    echo "  - Failed: $image_url"
-                    rm -f "$image_dest"
-                else
-                    echo "  - Saved: $image_dest"
-                fi
-            fi
+        # Get image
+        image=$(echo "$script" | jq -r '.image')
+        if [[ "$image" == http* ]]; then
+            # Full URL
+            img_id=$(basename "$image" | cut -d'/' -f1)
+            ext="${image##*.}"
+            out_image="${images_dir}/${img_id}.${ext}"
+            safe_download "$image" "$out_image"
+        elif [[ "$image" == /images/* ]]; then
+            # ScriptBlox path
+            full_url="https://scriptblox.com$image"
+            image_name=$(basename "$image")
+            image_slug=$(clean_name "$slug")
+            out_image="${images_dir}/${image_slug}/${image_name}"
+            mkdir -p "$(dirname "$out_image")"
+            safe_download "$full_url" "$out_image"
+        else
+            echo "    [!] Unknown image format: $image"
         fi
     done
-
-    ((page++))
 done
 
-echo "Finished. Scripts: $(find scripts -type f | wc -l), Images: $(find images -type f | wc -l)"
+echo "[✓] Done! Files saved under: $account_dir"
