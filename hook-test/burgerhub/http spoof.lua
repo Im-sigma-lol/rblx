@@ -2,11 +2,11 @@
 loadstring(game:HttpGet("https://raw.githubusercontent.com/BurgerMann/BurgerHub/refs/heads/main/BurgerHub"))()
 -- Load HttpSpy with API support
 local HttpSpy = loadstring(game:HttpGet("https://raw.githubusercontent.com/NotDSF/HttpSpy/main/init.lua"))({
-    AutoDecode = true,       -- Automatically decode JSON responses
-    Highlighting = true,     -- Syntax highlight requests/responses
-    SaveLogs = true,         -- Save HTTP logs
-    CLICommands = true,      -- Enable command line tools
-    ShowResponse = true,     -- Display response content
+    AutoDecode = false,       -- Automatically decode JSON responses
+    Highlighting = false,     -- Syntax highlight requests/responses
+    SaveLogs = false,         -- Save HTTP logs
+    CLICommands = false,      -- Enable command line tools
+    ShowResponse = false,     -- Display response content
     API = true,              -- Enable HttpSpy API (required for hooking)
     BlockedURLs = {}         -- Initial empty blocklist
 })
