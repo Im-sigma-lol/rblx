@@ -2,7 +2,7 @@ import os
 
 class AXKeyPayloadInterceptor:
     def __init__(self):
-        self.payload_dir = "/storage/emulated/0/Download/payload/"
+        self.payload_dir = "./payload/"
         self.target = "spdmteam.com/api/isauth"
         self.filename = "AX-auth-bypass.txt"
         self.content_type = "text/plain"
