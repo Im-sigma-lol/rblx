@@ -1,3 +1,5 @@
+--burger hub
+loadstring(game:HttpGet("https://raw.githubusercontent.com/BurgerMann/BurgerHub/refs/heads/main/BurgerHub"))()
 -- Load HttpSpy with API support
 local HttpSpy = loadstring(game:HttpGet("https://raw.githubusercontent.com/NotDSF/HttpSpy/main/init.lua"))({
     AutoDecode = true,       -- Automatically decode JSON responses
