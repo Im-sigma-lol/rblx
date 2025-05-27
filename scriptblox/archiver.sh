@@ -1,97 +1,98 @@
 #!/bin/bash
 
-# Ensure required tools are installed
-command -v jq >/dev/null || { echo "jq not installed. Install it with: pkg install jq"; exit 1; }
-command -v curl >/dev/null || { echo "curl not installed. Install it with: pkg install curl"; exit 1; }
+# Required tools check
+command -v jq >/dev/null || { echo "Missing: jq. Install with 'pkg install jq'"; exit 1; }
+command -v curl >/dev/null || { echo "Missing: curl. Install with 'pkg install curl'"; exit 1; }
 
-# Allow flexible arg parsing (e.g., -usr, --user, --username)
-for arg in "$@"; do
-    case "$arg" in
-        -usr=*|--usr=*|--user=*|--username=*)
-            username="${arg#*=}"
-            ;;
+# Parse username from args or prompt
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -usr=*|-user=*|-username=*)
+            username="${1#*=}"; shift ;;
+        -usr|-user|-username)
+            username="$2"; shift 2 ;;
+        *)
+            echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
-# Error if username wasn't found
+# Ask if not provided
 if [[ -z "$username" ]]; then
-    echo "Usage: $0 --username=USERNAME"
-    exit 1
+    read -rp "Enter ScriptBlox username: " username
 fi
 
-# Normalize output folders
-mkdir -p images/script scripts
+# Setup folders
+mkdir -p "scripts" "images/script"
 
-# Prepare user JSON output
+# Empty metadata JSON file
 user_json="user.json"
-echo "Fetching scripts for user: $username"
-echo -n > "$user_json"  # Empty the file first
+> "$user_json"
 
-# Page fetching loop
+# Start scraping
 page=1
 total_pages=1
 
 while (( page <= total_pages )); do
-    echo "Downloading page $page..."
+    echo "Fetching page $page of scripts for $username..."
+    api_url="https://scriptblox.com/api/user/scripts/$username?page=$page"
+    json=$(curl -s "$api_url")
 
-    # Fetch JSON from the API
-    url="https://scriptblox.com/api/user/scripts/$username?page=$page"
-    json=$(curl -s "$url")
-
-    # On first page, get total page count
     if [[ $page -eq 1 ]]; then
         total_pages=$(echo "$json" | jq '.result.totalPages')
         echo "Total pages: $total_pages"
     fi
 
-    # Append result JSON to the main file
     echo "$json" | jq '.result.scripts[]' >> "$user_json"
 
-    # Process each script on the current page
     echo "$json" | jq -c '.result.scripts[]' | while read -r script; do
         title=$(echo "$script" | jq -r '.title')
         slug=$(echo "$script" | jq -r '.slug')
-        script_id=$(echo "$script" | jq -r '._id')
-        image_path=$(echo "$script" | jq -r '.image')
+        image=$(echo "$script" | jq -r '.image')
 
-        # Clean filename (remove dangerous characters)
-        safe_title=$(echo "$title" | tr -cd '[:alnum:]_-' | cut -c1-40)
-
-        echo "Processing: $title"
-
-        # Download script source from API
-        slug_api="https://scriptblox.com/api/script/script/$slug"
-        script_json=$(curl -s "$slug_api")
-
-        script_code=$(echo "$script_json" | jq -r '.result.script')
-
-        # Create folder and save .lua file
+        safe_title=$(echo "$title" | tr -cd '[:alnum:]_-' | cut -c1-50)
         slug_folder="scripts/$slug"
         mkdir -p "$slug_folder"
-        echo "$script_code" > "$slug_folder/$safe_title.lua"
-        echo "  - Script saved: $slug_folder/$safe_title.lua"
 
-        # Process image
-        if [[ "$image_path" == "null" || "$image_path" == "/images/no-script.webp" ]]; then
-            echo "  - Skipping default or missing image"
+        # Try to fetch script code from main API
+        script_code=$(curl -s "https://scriptblox.com/api/script/script/$slug" | jq -r '.result.script')
+
+        # Fallback to rawscripts.net if null or empty
+        if [[ -z "$script_code" || "$script_code" == "null" ]]; then
+            script_code=$(curl -s "https://rawscripts.net/raw/$slug")
+        fi
+
+        # Save script code if non-empty
+        if [[ -n "$script_code" && "$script_code" != "null" ]]; then
+            script_file="$slug_folder/$safe_title.lua"
+            echo "$script_code" > "$script_file"
+            echo "Saved: $script_file"
         else
-            image_name=$(basename "$image_path")
+            echo "Warning: Script code not found for $slug"
+        fi
 
-            if [[ "$image_path" =~ ^http ]]; then
-                image_url="$image_path"
-                image_dest="images/script/$image_name"
-                mkdir -p "images/script"
+        # Download image if valid
+        if [[ "$image" != "null" && "$image" != "/images/no-script.webp" ]]; then
+            # Full image URL
+            if [[ "$image" == http* ]]; then
+                image_url="$image"
             else
-                image_url="https://scriptblox.com$image_path"
-                image_dest="images/$slug/$image_name"
-                mkdir -p "images/$slug"
+                image_url="https://scriptblox.com$image"
             fi
+            image_name=$(basename "$image_url")
+            image_folder="images/$slug"
+            mkdir -p "$image_folder"
+            image_dest="$image_folder/$image_name"
 
-            if [[ ! -f "$image_dest" ]]; then
-                echo "  - Downloading image: $image_dest"
+            # Download if not already
+            if [[ ! -f "$image_dest" || ! -s "$image_dest" ]]; then
+                echo "Downloading image for $slug..."
                 curl -s "$image_url" -o "$image_dest"
-            else
-                echo "  - Image already exists: $image_dest"
+                if [[ ! -s "$image_dest" ]]; then
+                    echo "  - Failed to download image: $image_url"
+                    rm -f "$image_dest"
+                else
+                    echo "  - Image saved: $image_dest"
+                fi
             fi
         fi
     done
@@ -99,4 +100,5 @@ while (( page <= total_pages )); do
     ((page++))
 done
 
-echo "Archiving complete."
+# Final summary
+echo "Done. Scripts: $(find scripts -type f | wc -l), Images: $(find images -type f | wc -l)"
