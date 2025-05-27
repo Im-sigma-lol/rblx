@@ -4,15 +4,19 @@
 command -v jq >/dev/null || { echo "Missing jq. Install with: pkg install jq"; exit 1; }
 command -v curl >/dev/null || { echo "Missing curl. Install with: pkg install curl"; exit 1; }
 
-# Accept only positional username (e.g., bash script.sh dexterscripts)
+# Require positional username
 if [[ $# -ne 1 ]]; then
     echo "Usage: bash $0 <username>"
     exit 1
 fi
 
 username="$1"
-mkdir -p "scripts" "images"
-user_json="user.json"
+base_folder="$username"
+scripts_folder="$base_folder/scripts"
+images_folder="$base_folder/images"
+user_json="$base_folder/user.json"
+
+mkdir -p "$scripts_folder" "$images_folder"
 > "$user_json"
 
 page=1
@@ -36,7 +40,7 @@ while (( page <= total_pages )); do
         image=$(echo "$script" | jq -r '.image')
 
         safe_title=$(echo "$title" | sed 's#[<>:"/\\|?*]# #g' | tr -s ' ' | cut -c1-50)
-        slug_folder="scripts/$slug"
+        slug_folder="$scripts_folder/$slug"
         mkdir -p "$slug_folder"
 
         # Script Code
@@ -54,25 +58,26 @@ while (( page <= total_pages )); do
         fi
 
         # Image Download
-        image_folder="images/$slug"
-        mkdir -p "$image_folder"
+        script_image_folder="$images_folder/$slug"
+        mkdir -p "$script_image_folder"
 
         if [[ "$image" != "null" && "$image" != "/images/no-script.webp" ]]; then
             if [[ "$image" == http* ]]; then
-                image_url="$image"
-                hash=$(echo "$image_url" | grep -oP 'tr\.rbxcdn\.com/\K[^/?]+')
-                ext="${image_url##*.}"
-                image_name="${hash}.${ext}"
+                # rbxcdn image
+                hash=$(echo "$image" | grep -oP 'tr\.rbxcdn\.com/\K[^/?]+')
+                image_url="https://tr.rbxcdn.com/$hash/480/270/Image/Png/noFilter"
+                image_name="${hash}.png"
             else
+                # scriptblox image
                 image_url="https://scriptblox.com${image}"
                 image_name=$(basename "$image_url" | cut -d'?' -f1)
             fi
 
-            image_dest="$image_folder/$image_name"
+            image_dest="$script_image_folder/$image_name"
 
             if [[ ! -s "$image_dest" ]]; then
                 echo "    [+] Downloading image for $slug..."
-                curl -s "$image_url" -o "$image_dest"
+                curl -sL "$image_url" -o "$image_dest"
                 if [[ ! -s "$image_dest" ]]; then
                     echo "      - Failed: $image_url"
                     rm -f "$image_dest"
@@ -86,4 +91,4 @@ while (( page <= total_pages )); do
     ((page++))
 done
 
-echo "[✓] Finished. Scripts: $(find scripts -type f | wc -l), Images: $(find images -type f | wc -l)"
+echo "[✓] Finished. Scripts: $(find "$scripts_folder" -type f | wc -l), Images: $(find "$images_folder" -type f | wc -l)"
