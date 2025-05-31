@@ -15,6 +15,10 @@ HEADERS = {
 }
 BASE_SAVE_DIR = "/storage/emulated/0/log"
 
+# Sanitize filenames
+def sanitize(name):
+    return re.sub(r'[\\/:*?"<>|]', '_', name)
+
 # Argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-auth", help="ROBLOSECURITY cookie")
@@ -60,8 +64,8 @@ def download_asset(asset_id, auth_cookie=None):
         return
 
     econ_data = econ_resp.json()
-    name = econ_data.get("Name", "Unknown").replace("/", "-")
-    creator = econ_data.get("Creator", {}).get("Name", "Unknown").replace("/", "-")
+    name = sanitize(econ_data.get("Name", "Unknown"))
+    creator = sanitize(econ_data.get("Creator", {}).get("Name", "Unknown"))
     base_path = os.path.join(BASE_SAVE_DIR, creator, f"{name}_{asset_id}")
     os.makedirs(base_path, exist_ok=True)
 
@@ -129,3 +133,4 @@ for aid in asset_ids:
         download_asset(aid, args.auth)
     except Exception as e:
         print(f"[!] Error processing {aid}: {e}")
+
