@@ -3,7 +3,6 @@ import sys
 import hashlib
 import json
 import requests
-from urllib.parse import quote
 
 HEADERS = {"User-Agent": "RobloxArchiver/1.0"}
 SESSION = requests.Session()
@@ -13,35 +12,31 @@ def safe_filename(name):
 
 def download_json(url):
     resp = SESSION.get(url, headers=HEADERS)
-    if resp.status_code == 200:
-        return resp.json()
-    return None
+    return resp.json() if resp.status_code == 200 else None
 
-def get_file_extension(content, default="bin"):
-    if content.startswith(b"<roblox"):
-        return "rbxmx"
-    elif content.startswith(b"<?xml"):
-        return "xml"
-    elif content.startswith(b"\x89PNG\r\n\x1a\n"):
+def get_file_extension(data):
+    if data.startswith(b"\x89PNG"):
         return "png"
-    elif content.startswith(b"PK\x03\x04"):  # zip or rbxm sometimes
+    elif data.startswith(b"<?xml") or b"<roblox" in data[:200]:
+        return "rbxmx"
+    elif data.startswith(b"PK\x03\x04"):
         return "rbxm"
-    elif content.startswith(b"{") and b"}" in content:
+    elif data.startswith(b"{"):
         return "json"
-    return default
+    return "bin"
 
-def file_hash(data):
+def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
-def save_file(path, data):
+def save_file(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
-        f.write(data)
+        f.write(content)
 
-def save_json(path, obj):
+def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2)
+        json.dump(data, f, indent=2)
 
 def archive_asset(asset_id):
     asset_id = str(asset_id)
@@ -50,57 +45,44 @@ def archive_asset(asset_id):
         print(f"[ERROR] Asset ID {asset_id} not found in Economy API.")
         return
 
-    owner = economy.get("Creator", {}).get("Name", "UnknownOwner")
-    name = economy.get("Name", f"Asset_{asset_id}")
-    asset_dir = os.path.join(safe_filename(owner), f"{safe_filename(name)}_{asset_id}")
-    os.makedirs(asset_dir, exist_ok=True)
+    creator = safe_filename(economy.get("Creator", {}).get("Name", "Unknown"))
+    name = safe_filename(economy.get("Name", f"Asset_{asset_id}"))
+    asset_base = os.path.join(creator, f"{name}_{asset_id}")
+    os.makedirs(asset_base, exist_ok=True)
+    save_json(os.path.join(asset_base, "economy.json"), economy)
 
-    save_json(os.path.join(asset_dir, "economy.json"), economy)
-
-    prev_hash = None
-    last_folder = ""
-    for version in range(100):  # Max 100 versions
+    last_hash = None
+    version_group = ""
+    for version in range(100):
+        print(f"[INFO] Checking version {version}")
         url = f"https://assetdelivery.roblox.com/v2/asset?id={asset_id}&version={version}"
-        meta_url = f"https://assetdelivery.roblox.com/v2/assets/{asset_id}/versions/{version}"
-        asset_resp = SESSION.get(url, headers=HEADERS)
-        if asset_resp.status_code == 404:
-            print(f"[INFO] Version {version} not found, stopping.")
+        delivery_json = download_json(url)
+        if not delivery_json or "locations" not in delivery_json or not delivery_json["locations"]:
+            print(f"[END] Version {version} unavailable (likely 404)")
             break
-        elif asset_resp.status_code != 200:
-            print(f"[WARN] Failed to download version {version}")
-            continue
 
-        data = asset_resp.content
-        current_hash = file_hash(data)
+        location = delivery_json["locations"][0]["location"]
+        asset_data = SESSION.get(location).content
+        asset_hash = sha256(asset_data)
 
-        if prev_hash == current_hash:
-            # Append to previous folder
-            new_folder = last_folder
+        if last_hash == asset_hash:
+            print(f"[SKIP] Duplicate version {version}, using folder: {version_group}")
         else:
-            # New version folder
-            new_folder = str(version) if not last_folder else f"{last_folder}.{version}" if prev_hash else str(version)
+            version_group = str(version) if not version_group else f"{version_group}.{version}"
+            print(f"[OK] New version hash, creating folder {version_group}")
 
-        version_path = os.path.join(asset_dir, "version", new_folder)
+        version_path = os.path.join(asset_base, "version", version_group)
         os.makedirs(version_path, exist_ok=True)
 
-        ext = get_file_extension(data)
-        file_path = os.path.join(version_path, f"asset.{ext}")
-        if not os.path.exists(file_path):
-            save_file(file_path, data)
-            print(f"[OK] Saved version {version} as {file_path}")
-        else:
-            print(f"[SKIP] Version {version} already saved.")
+        ext = get_file_extension(asset_data)
+        filename = f"{asset_hash}.{ext}"
+        save_file(os.path.join(version_path, filename), asset_data)
+        save_json(os.path.join(version_path, f"{asset_id}.json"), delivery_json)
 
-        # Save version-specific JSON too
-        version_meta = download_json(meta_url)
-        if version_meta:
-            save_json(os.path.join(version_path, f"{asset_id}.json"), version_meta)
-
-        prev_hash = current_hash
-        last_folder = new_folder
+        last_hash = asset_hash
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    if len(sys.argv) != 2:
         print("Usage: python rbx_asset_archiver.py <assetid>")
         sys.exit(1)
 
