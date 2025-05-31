@@ -43,33 +43,31 @@ async def download_asset(asset_id, client, base_path):
         print(f"[!] Asset meta failed {eid} ({meta.status_code})")
         return
     meta_json = meta.json()
-    with open(base / "assetid.json", "w") as f: json.dump(meta_json, f, indent=2)
+    with open(base / "asset.json", "w") as f: json.dump(meta_json, f, indent=2)
 
-    version, prev_hash, folder = 0, None, None
+    version, prev_hash = 0, None
     while True:
         version_url = f"https://assetdelivery.roblox.com/v2/asset?id={eid}&version={version}"
         ver_res = await fetch(client, version_url)
         if ver_res.status_code == 404:
-            print(f"[*] Version end for {eid}")
+            print(f"[*] No more versions for {eid}")
             break
         if ver_res.status_code != 200:
-            print(f"[!] Ver error {version} ({ver_res.status_code})")
+            print(f"[!] Error version {version} ({ver_res.status_code})")
             break
         content = ver_res.content
         hash_now = get_hash(content)
-        if hash_now == prev_hash:
-            print(f"[=] {eid} v{version} is duplicate")
-        else:
-            folder = base / f"{version}" if version == 0 else base / f"{last_ver}.{version}"
-            folder.mkdir(exist_ok=True)
-            prev_hash, last_ver = hash_now, version
         ext = get_ext(content)
-        file_path = folder / f"{hash_now}{ext}"
-        if not file_path.exists():
-            with open(file_path, "wb") as f: f.write(content)
-            print(f"[+] Saved {eid} v{version} as {file_path}")
+
+        version_folder = base / f"{version}"
+        version_folder.mkdir(parents=True, exist_ok=True)
+
+        asset_path = version_folder / f"{hash_now}{ext}"
+        if not asset_path.exists():
+            with open(asset_path, "wb") as f: f.write(content)
+            print(f"[+] Saved {eid} v{version} as {asset_path}")
         else:
-            print(f"[-] Exists: {file_path}")
+            print(f"[-] Already exists: {asset_path}")
         version += 1
 
 async def run_main(ids, cookie):
