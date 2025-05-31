@@ -1,89 +1,92 @@
 import os
 import sys
-import hashlib
 import json
+import time
+import hashlib
+import mimetypes
 import requests
 
-HEADERS = {"User-Agent": "RobloxArchiver/1.0"}
-SESSION = requests.Session()
+def get_json(url, headers=None, tries=5):
+    for i in range(tries):
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            return r.json()
+        elif r.status_code == 429:
+            print("[!] Rate limited. Sleeping...")
+            time.sleep(2 ** i)
+        else:
+            print(f"[!] Failed to get JSON from {url} (status {r.status_code})")
+            break
+    return None
 
-def safe_filename(name):
-    return "".join(c if c.isalnum() or c in " ._-()" else "_" for c in name).strip()
+def get_extension(content, url):
+    if content[:2] == b'PK':
+        return 'rbxlx'
+    if content.startswith(b'<'):
+        return 'rbxmx'
+    content_type = requests.head(url).headers.get("Content-Type", "")
+    ext = mimetypes.guess_extension(content_type.split(";")[0])
+    return ext.replace('.', '') if ext else 'bin'
 
-def download_json(url):
-    resp = SESSION.get(url, headers=HEADERS)
-    return resp.json() if resp.status_code == 200 else None
-
-def get_file_extension(data):
-    if data.startswith(b"\x89PNG"):
-        return "png"
-    elif data.startswith(b"<?xml") or b"<roblox" in data[:200]:
-        return "rbxmx"
-    elif data.startswith(b"PK\x03\x04"):
-        return "rbxm"
-    elif data.startswith(b"{"):
-        return "json"
-    return "bin"
-
-def sha256(data):
-    return hashlib.sha256(data).hexdigest()
+def hash_content(content):
+    return hashlib.sha256(content).hexdigest()[:12]
 
 def save_file(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
+    with open(path, 'wb') as f:
         f.write(content)
 
-def save_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-def archive_asset(asset_id):
-    asset_id = str(asset_id)
-    economy = download_json(f"https://economy.roblox.com/v2/assets/{asset_id}/details")
-    if not economy:
-        print(f"[ERROR] Asset ID {asset_id} not found in Economy API.")
+def main(asset_id):
+    economy_url = f"https://economy.roblox.com/v2/assets/{asset_id}/details"
+    economy_data = get_json(economy_url)
+    if not economy_data or 'Name' not in economy_data:
+        print("[!] Asset not found in Economy API.")
         return
 
-    creator = safe_filename(economy.get("Creator", {}).get("Name", "Unknown"))
-    name = safe_filename(economy.get("Name", f"Asset_{asset_id}"))
-    asset_base = os.path.join(creator, f"{name}_{asset_id}")
-    os.makedirs(asset_base, exist_ok=True)
-    save_json(os.path.join(asset_base, "economy.json"), economy)
+    name = economy_data["Name"].strip().replace("/", "_").replace("\\", "_")
+    creator = economy_data.get("Creator", {}).get("Name", "Unknown")
+    base_dir = f"{creator}/{name}_{asset_id}"
+    os.makedirs(base_dir, exist_ok=True)
+    with open(os.path.join(base_dir, "economy.json"), "w") as f:
+        json.dump(economy_data, f, indent=2)
 
+    version = 0
     last_hash = None
-    version_group = ""
-    for version in range(100):
-        print(f"[INFO] Checking version {version}")
-        url = f"https://assetdelivery.roblox.com/v2/asset?id={asset_id}&version={version}"
-        delivery_json = download_json(url)
-        if not delivery_json or "locations" not in delivery_json or not delivery_json["locations"]:
-            print(f"[END] Version {version} unavailable (likely 404)")
+    current_group = []
+    while True:
+        meta_url = f"https://assetdelivery.roblox.com/v2/asset?id={asset_id}&version={version}"
+        meta = get_json(meta_url)
+        if not meta or "locations" not in meta:
             break
+        with open(os.path.join(base_dir, f"{asset_id}.json"), "w") as f:
+            json.dump(meta, f, indent=2)
 
-        location = delivery_json["locations"][0]["location"]
-        asset_data = SESSION.get(location).content
-        asset_hash = sha256(asset_data)
+        asset_url = meta["locations"][0]["location"]
+        content = requests.get(asset_url).content
+        file_hash = hash_content(content)
 
-        if last_hash == asset_hash:
-            print(f"[SKIP] Duplicate version {version}, using folder: {version_group}")
+        if last_hash and file_hash == last_hash:
+            current_group.append(version)
         else:
-            version_group = str(version) if not version_group else f"{version_group}.{version}"
-            print(f"[OK] New version hash, creating folder {version_group}")
+            if current_group:
+                vname = f"{current_group[0]}-{current_group[-1]}" if len(current_group) > 1 else str(current_group[0])
+                group_path = os.path.join(base_dir, vname)
+                os.makedirs(group_path, exist_ok=True)
+                save_file(os.path.join(group_path, f"{last_hash}.{last_ext}"), last_content)
+            current_group = [version]
+            last_hash = file_hash
+            last_content = content
+            last_ext = get_extension(content, asset_url)
+        version += 1
 
-        version_path = os.path.join(asset_base, "version", version_group)
-        os.makedirs(version_path, exist_ok=True)
-
-        ext = get_file_extension(asset_data)
-        filename = f"{asset_hash}.{ext}"
-        save_file(os.path.join(version_path, filename), asset_data)
-        save_json(os.path.join(version_path, f"{asset_id}.json"), delivery_json)
-
-        last_hash = asset_hash
+    if current_group:
+        vname = f"{current_group[0]}-{current_group[-1]}" if len(current_group) > 1 else str(current_group[0])
+        group_path = os.path.join(base_dir, vname)
+        os.makedirs(group_path, exist_ok=True)
+        save_file(os.path.join(group_path, f"{last_hash}.{last_ext}"), last_content)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python rbx_asset_archiver.py <assetid>")
+    if len(sys.argv) < 2:
+        print("Usage: python roblox_asset_downloader.py <asset_id>")
         sys.exit(1)
-
-    archive_asset(sys.argv[1])
+    main(sys.argv[1])
