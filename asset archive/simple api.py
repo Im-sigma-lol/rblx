@@ -1,103 +1,40 @@
-import httpx, os, argparse, re, hashlib, json, asyncio
-from pathlib import Path
+import os
+import requests
+import hashlib
+import mimetypes
+from urllib.parse import urlparse
 
-def get_ext(data):
-    if data.startswith(b"<roblox"): return ".rbxmx"
-    if data.startswith(b"<?xml"): return ".xml"
-    if data[1:4] == b"PNG": return ".png"
-    if data[:2] == b"\xFF\xD8": return ".jpg"
-    if data.startswith(b"{") or data.startswith(b"["): return ".json"
-    return ".bin"
+def get_extension_from_headers(headers):
+    content_type = headers.get("Content-Type", "").split(";")[0].strip()
+    return mimetypes.guess_extension(content_type) or ".bin"
 
-def get_hash(data): return hashlib.sha256(data).hexdigest()
+def save_asset_file(asset_url, dest_folder):
+    try:
+        response = requests.get(asset_url, stream=True)
+        response.raise_for_status()
 
-async def fetch(client, url):
-    while True:
-        res = await client.get(url)
-        if res.status_code == 429:
-            print("[!] Rate limited, retrying...")
-            await asyncio.sleep(2)
-            continue
-        return res
+        # Get hash from the URL
+        parsed = urlparse(asset_url)
+        rbx_hash = os.path.basename(parsed.path)
 
-async def download_asset(asset_id, client, base_path):
-    eid = str(asset_id)
-    economy_url = f"https://economy.roblox.com/v2/assets/{eid}/details"
-    econ = await fetch(client, economy_url)
-    if econ.status_code != 200:
-        print(f"[!] Economy failed {eid} ({econ.status_code})")
-        return
-    data = econ.json()
-    creator = data.get("Creator", {}).get("Name", "UnknownCreator")
-    name = data.get("Name", "UnknownName").replace("/", "_")
-    base = base_path / f"{creator}/{name}_{eid}"
-    base.mkdir(parents=True, exist_ok=True)
-    with open(base / "economy.json", "w") as f: json.dump(data, f, indent=2)
+        # Get extension from Content-Type
+        ext = get_extension_from_headers(response.headers)
+        filename = f"{rbx_hash}{ext}"
+        filepath = os.path.join(dest_folder, filename)
 
-    meta_url = f"https://assetdelivery.roblox.com/v2/asset?id={eid}"
-    meta = await fetch(client, meta_url)
-    if meta.status_code == 401:
-        print(f"[!] HTTP 401 Unauthorized for asset {eid}")
-        return
-    if meta.status_code != 200:
-        print(f"[!] Asset meta failed {eid} ({meta.status_code})")
-        return
-    meta_json = meta.json()
-    with open(base / "asset.json", "w") as f: json.dump(meta_json, f, indent=2)
+        # Deduplication check
+        counter = 1
+        while os.path.exists(filepath):
+            filepath = os.path.join(dest_folder, f"{rbx_hash} ({counter}){ext}")
+            counter += 1
 
-    version, prev_hash = 0, None
-    while True:
-        version_url = f"https://assetdelivery.roblox.com/v2/asset?id={eid}&version={version}"
-        ver_res = await fetch(client, version_url)
-        if ver_res.status_code == 404:
-            print(f"[*] No more versions for {eid}")
-            break
-        if ver_res.status_code != 200:
-            print(f"[!] Error version {version} ({ver_res.status_code})")
-            break
-        content = ver_res.content
-        hash_now = get_hash(content)
-        ext = get_ext(content)
+        # Save file
+        with open(filepath, "wb") as f:
+            for chunk in response.iter_content(4096):
+                f.write(chunk)
 
-        version_folder = base / f"{version}"
-        version_folder.mkdir(parents=True, exist_ok=True)
-
-        asset_path = version_folder / f"{hash_now}{ext}"
-        if not asset_path.exists():
-            with open(asset_path, "wb") as f: f.write(content)
-            print(f"[+] Saved {eid} v{version} as {asset_path}")
-        else:
-            print(f"[-] Already exists: {asset_path}")
-        version += 1
-
-async def run_main(ids, cookie):
-    headers = {
-        "User-Agent": "Roblox/WinInet",
-        "Accept": "*/*",
-        "Referer": "https://www.roblox.com"
-    }
-    if cookie: headers["Cookie"] = f".ROBLOSECURITY={cookie.strip()}"
-    base = Path.cwd()
-    async with httpx.AsyncClient(headers=headers, timeout=30) as client:
-        for aid in ids:
-            try: await download_asset(aid, client, base)
-            except Exception as e: print(f"[!] Fail {aid}: {e}")
-
-def extract_ids_from_file(filename):
-    with open(filename, "r") as f: text = f.read()
-    return re.findall(r"rbxassetid://(\d+)", text)
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("assetid", nargs="?", help="Asset ID")
-    parser.add_argument("-r", "--readfile", help="Read file for rbxassetid://")
-    parser.add_argument("-auth", help="ROBLOSECURITY cookie")
-    args = parser.parse_args()
-
-    ids = []
-    if args.assetid: ids.append(args.assetid)
-    if args.readfile: ids.extend(extract_ids_from_file(args.readfile))
-    if not ids: return print("No assetid given.")
-    asyncio.run(run_main(ids, args.auth))
-
-if __name__ == "__main__": main()
+        print(f"[+] Downloaded asset to {filepath}")
+        return filepath
+    except Exception as e:
+        print(f"[!] Failed to download asset: {e}")
+        return None
