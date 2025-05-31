@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import json
 import time
 import hashlib
@@ -12,11 +13,9 @@ def get_json(url, headers=None, tries=5):
         if r.status_code == 200:
             return r.json()
         elif r.status_code == 429:
-            print("[!] Rate limited. Sleeping...")
+            print(f"[!] Rate limited: {url} (retry {i + 1})")
             time.sleep(2 ** i)
-        else:
-            print(f"[!] Failed to get JSON from {url} (status {r.status_code})")
-            break
+    print(f"[!] Failed: {url}")
     return None
 
 def get_extension(content, url):
@@ -36,11 +35,11 @@ def save_file(path, content):
     with open(path, 'wb') as f:
         f.write(content)
 
-def main(asset_id):
+def process_asset(asset_id):
     economy_url = f"https://economy.roblox.com/v2/assets/{asset_id}/details"
     economy_data = get_json(economy_url)
     if not economy_data or 'Name' not in economy_data:
-        print("[!] Asset not found in Economy API.")
+        print(f"[!] Not found: {asset_id}")
         return
 
     name = economy_data["Name"].strip().replace("/", "_").replace("\\", "_")
@@ -85,8 +84,24 @@ def main(asset_id):
         os.makedirs(group_path, exist_ok=True)
         save_file(os.path.join(group_path, f"{last_hash}.{last_ext}"), last_content)
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python roblox_asset_downloader.py <asset_id>")
+def extract_asset_ids(file_path):
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        content = f.read()
+    return list(set(re.findall(r'rbxassetid://(\d+)', content)))
+
+def main():
+    if len(sys.argv) == 3 and sys.argv[1] == '-r':
+        asset_ids = extract_asset_ids(sys.argv[2])
+        print(f"[+] Found {len(asset_ids)} asset(s)")
+        for asset_id in asset_ids:
+            process_asset(asset_id)
+    elif len(sys.argv) == 2:
+        process_asset(sys.argv[1])
+    else:
+        print("Usage:")
+        print("  python script.py <asset_id>")
+        print("  python script.py -r <file_with_rbxassetid>")
         sys.exit(1)
-    main(sys.argv[1])
+
+if __name__ == "__main__":
+    main()
