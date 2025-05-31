@@ -7,15 +7,23 @@ import hashlib
 import mimetypes
 import requests
 
+auth_token = None
+
 def get_json(url, headers=None, tries=5):
+    if headers is None:
+        headers = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
     for i in range(tries):
         r = requests.get(url, headers=headers)
         if r.status_code == 200:
             return r.json()
         elif r.status_code == 429:
-            print(f"[!] Rate limited: {url} (retry {i + 1})")
+            print(f"[!] Rate limited (429): {url} (retry {i + 1})")
             time.sleep(2 ** i)
-    print(f"[!] Failed: {url}")
+        else:
+            print(f"[!] HTTP {r.status_code}: {url}")
+            break
     return None
 
 def get_extension(content, url):
@@ -23,7 +31,11 @@ def get_extension(content, url):
         return 'rbxlx'
     if content.startswith(b'<'):
         return 'rbxmx'
-    content_type = requests.head(url).headers.get("Content-Type", "")
+    try:
+        head = requests.head(url)
+        content_type = head.headers.get("Content-Type", "")
+    except:
+        content_type = ""
     ext = mimetypes.guess_extension(content_type.split(";")[0])
     return ext.replace('.', '') if ext else 'bin'
 
@@ -35,11 +47,25 @@ def save_file(path, content):
     with open(path, 'wb') as f:
         f.write(content)
 
+def robust_get(url, tries=5):
+    headers = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    for i in range(tries):
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            return r.content
+        elif r.status_code == 429:
+            print(f"[!] Rate limited (429): {url} (retry {i + 1})")
+            time.sleep(2 ** i)
+    print(f"[!] Failed to fetch binary: {url}")
+    return None
+
 def process_asset(asset_id):
     economy_url = f"https://economy.roblox.com/v2/assets/{asset_id}/details"
     economy_data = get_json(economy_url)
     if not economy_data or 'Name' not in economy_data:
-        print(f"[!] Not found: {asset_id}")
+        print(f"[!] Not found or missing name: {asset_id}")
         return
 
     name = economy_data["Name"].strip().replace("/", "_").replace("\\", "_")
@@ -61,7 +87,9 @@ def process_asset(asset_id):
             json.dump(meta, f, indent=2)
 
         asset_url = meta["locations"][0]["location"]
-        content = requests.get(asset_url).content
+        content = robust_get(asset_url)
+        if content is None:
+            break
         file_hash = hash_content(content)
 
         if last_hash and file_hash == last_hash:
@@ -90,18 +118,36 @@ def extract_asset_ids(file_path):
     return list(set(re.findall(r'rbxassetid://(\d+)', content)))
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == '-r':
-        asset_ids = extract_asset_ids(sys.argv[2])
-        print(f"[+] Found {len(asset_ids)} asset(s)")
-        for asset_id in asset_ids:
-            process_asset(asset_id)
-    elif len(sys.argv) == 2:
-        process_asset(sys.argv[1])
-    else:
+    global auth_token
+    args = sys.argv[1:]
+    i = 0
+    asset_ids = []
+
+    while i < len(args):
+        arg = args[i]
+        if arg == "-auth":
+            auth_token = args[i + 1]
+            i += 2
+        elif arg == "-r":
+            file_path = args[i + 1]
+            asset_ids.extend(extract_asset_ids(file_path))
+            i += 2
+        elif arg.isdigit():
+            asset_ids.append(arg)
+            i += 1
+        else:
+            print(f"[!] Unknown argument: {arg}")
+            i += 1
+
+    if not asset_ids:
         print("Usage:")
         print("  python script.py <asset_id>")
-        print("  python script.py -r <file_with_rbxassetid>")
+        print("  python script.py -r <file> [-auth <token>]")
         sys.exit(1)
+
+    asset_ids = list(set(asset_ids))
+    for aid in asset_ids:
+        process_asset(aid)
 
 if __name__ == "__main__":
     main()
