@@ -3,131 +3,129 @@ import re
 import sys
 import json
 import time
-import argparse
 import hashlib
+import argparse
 import requests
+from urllib.parse import urlparse, parse_qs
 
-# Base headers (set Roblox-style User-Agent)
-DEFAULT_HEADERS = {
+# Constants
+HEADERS = {
     "User-Agent": "Roblox/WinInet",
-    "Accept": "*/*",
-    "Connection": "keep-alive"
+    "Accept": "application/json",
 }
+BASE_SAVE_DIR = "/storage/emulated/0/log"
 
-# Auto-detect file extension based on binary content
-def detect_extension(content: bytes):
-    if content.startswith(b'\x89PNG'):
-        return ".png"
-    elif content[:2] == b'BM':
-        return ".bmp"
-    elif content.startswith(b'\xff\xd8'):
-        return ".jpg"
-    elif b'<roblox' in content.lower():
-        return ".rbxmx"
-    elif content[:2] == b'\x1f\x8b':
-        return ".rbxm"
-    return ".bin"
+# Argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument("-auth", help="ROBLOSECURITY cookie")
+parser.add_argument("-r", help="File containing rbxassetid:// references")
+args = parser.parse_args()
 
-# Extract asset IDs from file
-def extract_ids_from_file(filename):
-    ids = set()
-    with open(filename, 'r', encoding='utf-8') as f:
-        text = f.read()
-        ids.update(re.findall(r'rbxassetid://(\d+)', text))
-    return list(ids)
+# Load asset IDs from -r file
+asset_ids = set()
+if args.r:
+    with open(args.r, "r", encoding="utf-8") as f:
+        content = f.read()
+        asset_ids.update(re.findall(r"rbxassetid://(\d+)", content))
 
-# Save content with auto-hashing + deduplication
-def save_file(content, path, filename):
-    os.makedirs(path, exist_ok=True)
-    full_path = os.path.join(path, filename)
-    base, ext = os.path.splitext(full_path)
-    counter = 1
-    while os.path.exists(full_path):
-        full_path = f"{base} ({counter}){ext}"
-        counter += 1
-    with open(full_path, 'wb') as f:
-        f.write(content)
-    return full_path
+# Function to handle rate limits
+def safe_get(url, headers, cookies=None, stream=False):
+    retries = 0
+    while retries < 5:
+        r = requests.get(url, headers=headers, cookies=cookies, stream=stream)
+        if r.status_code == 429:
+            print(f"[!] Rate limited: {url}")
+            time.sleep(2 ** retries)
+            retries += 1
+        else:
+            return r
+    raise Exception(f"Failed after 5 retries: {url}")
 
-# Main function to download asset
-def download_asset(asset_id, cookie=None):
+# Function to hash content
+def hash_content(data):
+    return hashlib.sha256(data).hexdigest()
+
+# Function to download asset
+def download_asset(asset_id, auth_cookie=None):
     print(f"[#] Processing Asset ID: {asset_id}")
-    headers = DEFAULT_HEADERS.copy()
-    if cookie:
-        headers["Cookie"] = f".ROBLOSECURITY={cookie.strip()}"
+    cookies = {}
+    if auth_cookie:
+        cookies[".ROBLOSECURITY"] = auth_cookie
 
-    # 1. Get metadata from economy API
+    # Get economy info
     econ_url = f"https://economy.roblox.com/v2/assets/{asset_id}/details"
-    econ = requests.get(econ_url, headers=headers)
-    if econ.status_code != 200:
-        print(f"[!] Failed economy API {asset_id} ({econ.status_code})")
+    econ_resp = safe_get(econ_url, HEADERS, cookies)
+    if econ_resp.status_code != 200:
+        print(f"[!] Failed to fetch economy for {asset_id}")
         return
-    econ_data = econ.json()
-    name = econ_data.get("Name", "UnknownName").replace("/", "_")
-    creator = econ_data.get("Creator", {}).get("Name", "UnknownCreator")
-    base_path = f"/storage/emulated/0/log/{creator}/{name}_{asset_id}/"
 
-    # Save economy.json
+    econ_data = econ_resp.json()
+    name = econ_data.get("Name", "Unknown").replace("/", "-")
+    creator = econ_data.get("Creator", {}).get("Name", "Unknown").replace("/", "-")
+    base_path = os.path.join(BASE_SAVE_DIR, creator, f"{name}_{asset_id}")
+    os.makedirs(base_path, exist_ok=True)
+
     with open(os.path.join(base_path, "economy.json"), "w", encoding="utf-8") as f:
         json.dump(econ_data, f, indent=2)
 
+    # Version loop
     version = 1
     while True:
-        # 2. Get asset delivery metadata (asset.json)
-        asset_url = f"https://assetdelivery.roblox.com/v2/asset?id={asset_id}&version={version}"
-        asset_res = requests.get(asset_url, headers=headers)
+        version_path = os.path.join(base_path, "version", str(version))
+        os.makedirs(version_path, exist_ok=True)
 
-        if asset_res.status_code == 401:
-            print("[!] Unauthorized (401): Check your .ROBLOSECURITY")
-            return
-        elif asset_res.status_code == 429:
-            print("[!] Rate-limited! Waiting 5s...")
-            time.sleep(5)
-            continue
-        elif asset_res.status_code != 200:
-            print(f"[*] No more versions after v{version - 1}")
+        asset_url = f"https://assetdelivery.roblox.com/v2/asset?id={asset_id}&version={version}"
+        asset_resp = safe_get(asset_url, HEADERS, cookies)
+        if asset_resp.status_code == 404:
+            print(f"[*] No more versions for {asset_id}")
+            break
+        elif asset_resp.status_code == 401:
+            print(f"[!] HTTP 401: {asset_url}")
             break
 
-        asset_data = asset_res.json()
-        version_dir = os.path.join(base_path, str(version))
-        os.makedirs(version_dir, exist_ok=True)
-
-        # Save asset.json
-        with open(os.path.join(version_dir, "asset.json"), "w", encoding="utf-8") as f:
+        asset_data = asset_resp.json()
+        with open(os.path.join(version_path, "asset.json"), "w", encoding="utf-8") as f:
             json.dump(asset_data, f, indent=2)
 
-        # 3. Download actual asset
         locations = asset_data.get("locations", [])
         if not locations:
-            print(f"[!] No asset location for v{version}")
+            print(f"[!] No downloadable location for {asset_id} v{version}")
+            version += 1
+            continue
+
+        download_url = locations[0]["location"]
+        file_resp = safe_get(download_url, HEADERS, cookies, stream=True)
+        if file_resp.status_code != 200:
+            print(f"[!] Failed to download file for {asset_id} v{version}")
+            version += 1
+            continue
+
+        raw = file_resp.content
+        sha = hash_content(raw)
+
+        # Detect extension from download URL
+        parsed = urlparse(download_url)
+        ext = os.path.splitext(parsed.path)[1].split("?")[0] or ".bin"
+        filename = f"{sha}{ext}"
+        filepath = os.path.join(version_path, filename)
+
+        # Check for duplicate
+        if not os.path.exists(filepath):
+            with open(filepath, "wb") as f:
+                f.write(raw)
+            print(f"[+] Saved {asset_id} v{version} as {filepath}")
         else:
-            raw_url = locations[0]["location"]
-            asset_bin = requests.get(raw_url, headers=headers)
-            if asset_bin.status_code == 200:
-                data = asset_bin.content
-                file_hash = hashlib.sha256(data).hexdigest()
-                ext = detect_extension(data)
-                saved = save_file(data, version_dir, f"{file_hash}{ext}")
-                print(f"[+] Saved {asset_id} v{version} as {saved}")
-            else:
-                print(f"[!] Failed to download binary: {raw_url}")
+            print(f"[=] Duplicate found for {asset_id} v{version}, skipped")
 
         version += 1
-        time.sleep(0.25)  # cooldown to prevent rate-limits
 
-# CLI runner
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Roblox Asset Downloader")
-    parser.add_argument("ids", nargs="*", help="Asset IDs")
-    parser.add_argument("-r", metavar="file", help="File to parse rbxassetid:// IDs from")
-    parser.add_argument("-auth", help="Your .ROBLOSECURITY cookie")
+# Main execution
+if not asset_ids:
+    print("[!] No asset IDs found. Use -r file or modify script to add assets manually.")
+    sys.exit(1)
 
-    args = parser.parse_args()
-    all_ids = set(args.ids)
-
-    if args.r:
-        file_ids = extract_ids_from_file(args.r)
-        all_ids.update(file_ids)
-
-    for aid in all_ids:
+for aid in asset_ids:
+    try:
         download_asset(aid, args.auth)
+    except Exception as e:
+        print(f"[!] Error processing {aid}: {e}")
