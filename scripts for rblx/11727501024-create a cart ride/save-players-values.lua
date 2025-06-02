@@ -1,41 +1,88 @@
--- Create GUI in CoreGui
-local player = game:GetService("Players").LocalPlayer
+-- Cleanup old GUI
 local CoreGui = game:GetService("CoreGui")
-
--- Remove old GUI if exists
 if CoreGui:FindFirstChild("ValueDumperGui") then
     CoreGui:FindFirstChild("ValueDumperGui"):Destroy()
 end
 
--- GUI Setup
-local ScreenGui = Instance.new("ScreenGui", CoreGui)
-ScreenGui.Name = "ValueDumperGui"
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 300, 0, 100)
-Frame.Position = UDim2.new(0.5, -150, 0.3, 0)
-Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-Frame.BorderSizePixel = 0
+-- Create GUI
+local gui = Instance.new("ScreenGui", CoreGui)
+gui.Name = "ValueDumperGui"
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.ResetOnSpawn = false
 
-local TextBox = Instance.new("TextBox", Frame)
-TextBox.Size = UDim2.new(1, -20, 0, 40)
-TextBox.Position = UDim2.new(0, 10, 0, 10)
-TextBox.PlaceholderText = "Enter Target Username"
-TextBox.Text = ""
-TextBox.TextSize = 18
-TextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-TextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-TextBox.BorderSizePixel = 0
+-- Main Frame
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 300, 0, 100)
+frame.Position = UDim2.new(0.5, -150, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
 
-local InfoLabel = Instance.new("TextLabel", Frame)
-InfoLabel.Size = UDim2.new(1, -20, 0, 40)
-InfoLabel.Position = UDim2.new(0, 10, 0, 55)
-InfoLabel.BackgroundTransparency = 1
-InfoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-InfoLabel.TextSize = 16
-InfoLabel.Text = ""
+-- TextBox
+local textbox = Instance.new("TextBox", frame)
+textbox.Size = UDim2.new(1, -20, 0, 40)
+textbox.Position = UDim2.new(0, 10, 0, 10)
+textbox.PlaceholderText = "Enter Target Username"
+textbox.Text = ""
+textbox.TextSize = 18
+textbox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+textbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+textbox.BorderSizePixel = 0
 
--- Value types
+-- Info Label
+local label = Instance.new("TextLabel", frame)
+label.Size = UDim2.new(1, -20, 0, 40)
+label.Position = UDim2.new(0, 10, 0, 55)
+label.BackgroundTransparency = 1
+label.TextColor3 = Color3.fromRGB(200, 200, 200)
+label.TextSize = 16
+label.Text = ""
+
+-- Minimize Button
+local miniBtn = Instance.new("TextButton", frame)
+miniBtn.Size = UDim2.new(0, 20, 0, 20)
+miniBtn.Position = UDim2.new(1, -25, 0, 5)
+miniBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+miniBtn.Text = "-"
+miniBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+miniBtn.TextSize = 14
+miniBtn.BorderSizePixel = 0
+
+-- Minimized Icon
+local icon = Instance.new("TextButton", gui)
+icon.Size = UDim2.new(0, 20, 0, 20)
+icon.Position = frame.Position + UDim2.new(0, 280, 0, 0) -- right side of frame
+icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+icon.Text = "+"
+icon.TextColor3 = Color3.fromRGB(255, 255, 255)
+icon.TextSize = 14
+icon.Visible = false
+icon.BorderSizePixel = 0
+
+-- Track last position
+local lastPos = frame.Position
+
+-- Toggle minimize
+miniBtn.MouseButton1Click:Connect(function()
+    lastPos = frame.Position
+    frame.Visible = false
+    icon.Position = lastPos + UDim2.new(0, 280, 0, 0)
+    icon.Visible = true
+end)
+
+-- Restore GUI
+icon.MouseButton1Click:Connect(function()
+    frame.Position = lastPos
+    frame.Visible = true
+    icon.Visible = false
+end)
+
+-- Value Types
 local valueTypes = {
     StringValue = true, BoolValue = true, IntValue = true,
     NumberValue = true, Vector3Value = true, ObjectValue = true,
@@ -43,7 +90,7 @@ local valueTypes = {
     FloatValue = true, DoubleConstrainedValue = true
 }
 
--- Helper
+-- Helper: Get full path
 local function getFullPath(obj)
     local path = {}
     while obj and obj ~= game do
@@ -55,7 +102,6 @@ end
 
 -- Dump values
 local function dumpValuesFor(targetName)
-    local Players = game:GetService("Players")
     local target = Players:FindFirstChild(targetName)
     if not target then
         return false, "Player not found."
@@ -79,15 +125,15 @@ local function dumpValuesFor(targetName)
     end
 end
 
--- Bind enter key
-TextBox.FocusLost:Connect(function(enterPressed)
+-- Run on Enter
+textbox.FocusLost:Connect(function(enterPressed)
     if enterPressed then
-        local inputName = TextBox.Text:match("^%s*(.-)%s*$")
+        local inputName = textbox.Text:match("^%s*(.-)%s*$")
         if inputName ~= "" then
             local success, msg = dumpValuesFor(inputName)
-            InfoLabel.Text = msg
+            label.Text = msg
         else
-            InfoLabel.Text = "Please enter a username."
+            label.Text = "Please enter a username."
         end
     end
 end)
