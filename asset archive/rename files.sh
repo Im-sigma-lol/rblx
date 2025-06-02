@@ -1,62 +1,81 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/bin/bash
 
-shopt -s globstar nullglob
-dir="/storage/emulated/0/apps/roblox"
+# Base directory
+BASE="/storage/emulated/0/apps/roblox"
+LOG_DIR="$BASE/__log__"
+mkdir -p "$LOG_DIR"
 
-for file in "$dir"/**; do
-  [ -f "$file" ] || continue
+# Log files
+CLASSIFY_LOG="$LOG_DIR/classify-log.jsonl"
+ERROR_LOG="$LOG_DIR/error-log.jsonl"
+REVERT_LOG="$LOG_DIR/revert-log.jsonl"
 
-  encoding=$(file -b --mime "$file" 2>/dev/null | cut -d'=' -f2)
-  name=$(basename "$file")
-  ext="${name##*.}"
+# Clear previous logs (optional)
+> "$CLASSIFY_LOG"
+> "$ERROR_LOG"
+> "$REVERT_LOG"
 
-  if [[ "$encoding" == "utf-8" ]]; then
-    headline=$(head -n 1 "$file" | tr -d '\r\n')
+# Function to log JSON
+log_json() {
+    echo "$1" >> "$2"
+}
 
-    if [[ "$headline" == \{* ]]; then
-      newext="json"
-    elif grep -q "<roblox" "$file"; then
-      newext="rbxmx"
-    elif [[ "$headline" =~ ^version\ [0-9]+\.[0-9]+$ ]]; then
-      newext="mesh"
+# Function to determine relative path
+relative_path() {
+    echo "${1#"$BASE"/}"
+}
+
+# Classify file
+classify_file() {
+    filepath="$1"
+    filename="$(basename "$filepath")"
+    relpath="$(relative_path "$filepath")"
+
+    # Skip log files
+    [[ "$filepath" == *"__log__"* ]] && return
+
+    # Skip directories
+    [[ -d "$filepath" ]] && return
+
+    # Read first line (for UTF-8 or ASCII detection)
+    first_line=$(head -n 1 "$filepath" 2>/dev/null)
+
+    # Detect if file is UTF-8 text
+    if file "$filepath" | grep -q 'ASCII\|UTF-8'; then
+        if [[ "$first_line" == *"<roblox version="* ]]; then
+            ext="rbxmx"
+        elif [[ "$first_line" == '{'* ]]; then
+            ext="json"
+        elif [[ "$first_line" =~ ^version[[:space:]]+[0-9]+\.[0-9]+ ]]; then
+            ext="mesh"
+        else
+            ext="txt"
+        fi
     else
-      newext="txt"
+        # Binary file — check magic headers
+        magic=$(xxd -l 4 -p "$filepath" 2>/dev/null | tr '[:lower:]' '[:upper:]')
+        case "$magic" in
+            4F676753) ext="ogg" ;;  # "OggS"
+            89504E47) ext="png" ;;  # PNG
+            FFD8FFE0|FFD8FFE1|FFD8FFE2) ext="jpg" ;;  # JPEG
+            *) ext="bin" ;;
+        esac
     fi
-  else
-    headline=$(head -n 1 "$file" | tr -d '\r\n')
-    if [[ "$headline" =~ ^version\ [0-9]+\.[0-9]+$ ]]; then
-      newext="mesh"
-    else
-      sig4=$(dd if="$file" bs=1 count=4 2>/dev/null | hexdump -v -e '/1 "%02X"')
-      case "$sig4" in
-        4F676753) newext="ogg" ;;
-        664C6143) newext="flac" ;;
-        52494646)
-          if head -c 512 "$file" | grep -q "WAVE"; then
-            newext="wav"
-          elif head -c 512 "$file" | grep -q "WEBP"; then
-            newext="webp"
-          else
-            newext="bin"
-          fi
-          ;;
-        89504E47) newext="png" ;;
-        47494638) newext="gif" ;;
-        25504446) newext="pdf" ;;
-        494433*) newext="mp3" ;;
-        *)
-          if head -c 512 "$file" | grep -q '#EXTM3U'; then
-            newext="m3u8"
-          elif head -c 512 "$file" | grep -q -E '^TS[a-zA-Z]'; then
-            newext="ts"
-          else
-            newext="bin"
-          fi
-          ;;
-      esac
-    fi
-  fi
 
-  base="${file%.*}"
-  mv -n "$file" "${base}.${newext}"
+    newname="${filepath%.*}.$ext"
+
+    # Skip rename if same
+    [[ "$filepath" == "$newname" ]] && return
+
+    if mv -n "$filepath" "$newname"; then
+        log_json "{\"from\": \"$(relative_path "$filepath")\", \"to\": \"$(relative_path "$newname")\", \"type\": \"$ext\"}" "$CLASSIFY_LOG"
+        log_json "{\"old\": \"$(relative_path "$filepath")\", \"new\": \"$(relative_path "$newname")\"}" "$REVERT_LOG"
+    else
+        log_json "{\"error\": \"rename failed\", \"file\": \"$relpath\"}" "$ERROR_LOG"
+    fi
+}
+
+# Walk all files under base dir
+find "$BASE" -type f | while read -r file; do
+    classify_file "$file"
 done
