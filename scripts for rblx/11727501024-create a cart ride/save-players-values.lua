@@ -10,7 +10,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Create GUI
 local gui = Instance.new("ScreenGui", CoreGui)
-gui.Name = "ValueDumperGui"
+gui.Name = "MDExMDAxMTAgMDEwMTAwMDAgMDEwMTAxMDEgMDEwMDAxMTEgMDEwMTExMDEgMDExMTAxMTEgMDEwMDAwMTAgMDEwMTEwMDEgMDEwMDAxMTAgMDEwMTAwMDAgMDEwMTExMTEgMDExMTExMTEgMDEwMDAxMTAgMDEwMTEwMDE="
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.ResetOnSpawn = false
 
