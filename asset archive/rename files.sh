@@ -5,52 +5,54 @@ BASE_DIR="/storage/emulated/0/Apps/Roblox"
 rename_file_based_on_type() {
     local filepath="$1"
 
-    # Get MIME type
-    local mime
-    mime=$(file -b --mime-type "$filepath")
+    # Use basic 'file' command
+    local info
+    info=$(file -b "$filepath" | tr '[:upper:]' '[:lower:]')
 
-    # Decide new extension
+    # Determine extension
     local ext=""
-    case "$mime" in
-        image/jpeg) ext="jpg" ;;
-        image/png) ext="png" ;;
-        image/webp) ext="webp" ;;
-        image/*) ext="img" ;;
-        audio/ogg) ext="ogg" ;;
-        audio/mpeg) ext="mp3" ;;
-        audio/*) ext="audio" ;;
-        video/mp4) ext="mp4" ;;
-        video/webm) ext="webm" ;;
-        video/*) ext="video" ;;
-        application/xml|text/xml)
-            if file -b --mime-encoding "$filepath" | grep -qi utf-8; then
-                ext="rbxmx"
-            else
-                ext="xml"
-            fi
-            ;;
-        application/octet-stream)
-            if file "$filepath" | grep -qi 'utf-8'; then
-                ext="txt"
-            else
-                ext="rbxm"
-            fi
-            ;;
-        text/*)
-            ext="txt"
-            ;;
-        *)
-            ext="bin"
-            ;;
-    esac
+    if echo "$info" | grep -q 'jpeg'; then
+        ext="jpg"
+    elif echo "$info" | grep -q 'png'; then
+        ext="png"
+    elif echo "$info" | grep -q 'webp'; then
+        ext="webp"
+    elif echo "$info" | grep -q 'image'; then
+        ext="img"
+    elif echo "$info" | grep -q 'ogg'; then
+        ext="ogg"
+    elif echo "$info" | grep -q 'mpeg'; then
+        ext="mp3"
+    elif echo "$info" | grep -q 'audio'; then
+        ext="audio"
+    elif echo "$info" | grep -q 'video'; then
+        ext="mp4"
+    elif echo "$info" | grep -q 'json'; then
+        ext="json"
+    elif echo "$info" | grep -q 'xml'; then
+        # Check for UTF-8 to decide .rbxmx or just .xml
+        if file -b "$filepath" | grep -qi 'utf-8'; then
+            ext="rbxmx"
+        else
+            ext="xml"
+        fi
+    elif echo "$info" | grep -q 'ascii'; then
+        ext="txt"
+    elif echo "$info" | grep -q 'utf-8'; then
+        ext="txt"
+    elif echo "$info" | grep -q 'data'; then
+        ext="rbxm"
+    else
+        ext="bin"
+    fi
 
-    # Strip original extension
-    local base="${filepath%.*}"
+    # Strip extension from filename even if it already exists
     local dir=$(dirname "$filepath")
-    local name=$(basename "$base")
+    local base=$(basename "$filepath")
+    local name="${base%.*}"
     local newpath="$dir/$name.$ext"
 
-    # Only rename if new path differs
+    # Only rename if needed
     if [[ "$filepath" != "$newpath" ]]; then
         echo "Renaming: $filepath → $newpath"
         mv "$filepath" "$newpath"
@@ -59,5 +61,5 @@ rename_file_based_on_type() {
 
 export -f rename_file_based_on_type
 
-# Recursively find all files
+# Recursively find all files and rename based on type
 find "$BASE_DIR" -type f -exec bash -c 'rename_file_based_on_type "$0"' {} \;
