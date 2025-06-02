@@ -2,73 +2,68 @@
 
 root="/storage/emulated/0/apps/roblox"
 
-detect_type() {
-  file="$1"
-
-  # Detect JSON
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$file" 2>/dev/null; then
-    echo "json"
-    return
-  fi
-
-  # Detect XML (RBXMX)
-  if grep -q '<roblox' "$file" 2>/dev/null; then
-    echo "rbxmx"
-    return
-  fi
-
-  # Detect M3U8
-  if grep -qE '^#EXTM3U' "$file" 2>/dev/null; then
-    echo "m3u8"
-    return
-  fi
-
-  # Detect TS (TypeScript)
-  if grep -qE '^(//|import )' "$file" 2>/dev/null; then
-    echo "ts"
-    return
-  fi
-
-  # Detect image/audio/video using magic number
-  mimetype=$(file -b --mime-type "$file")
-  case "$mimetype" in
-    image/png) echo "png" ;;
-    image/jpeg) echo "jpg" ;;
-    image/webp) echo "webp" ;;
-    audio/mpeg) echo "mp3" ;;
-    audio/x-wav) echo "wav" ;;
-    audio/ogg) echo "ogg" ;;
-    video/mp4) echo "mp4" ;;
-    video/webm) echo "webm" ;;
-    *) ;;
-  esac && return
-
-  # Fallback: non-UTF-8? Likely binary
-  if ! iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
-    echo "rbxm"
-    return
-  fi
-
-  echo "unknown"
-}
-
 fix_file() {
-  file="$1"
-  ext=$(detect_type "$file")
+    file="$1"
+    if [[ ! -f "$file" ]]; then return; fi
 
-  if [ "$ext" = "unknown" ]; then
-    echo "❓ Unknown: $file"
-    return
-  fi
+    mimetype=$(file -b --mime-type "$file")
+    encoding=$(file -b --mime-encoding "$file")
+    newext=""
 
-  new="${file%.*}.$ext"
-  if [ "$file" != "$new" ]; then
-    mv "$file" "$new"
-    echo "✅ Renamed: $file → $new"
-  fi
+    # Handle text/json
+    if [[ "$mimetype" == "application/json" || "$mimetype" == "text/plain" ]]; then
+        if jq empty "$file" &>/dev/null; then
+            newext="json"
+        elif grep -q '<?xml' "$file"; then
+            newext="rbxmx"
+        else
+            newext="txt"
+        fi
+
+    # Binary XML (non-UTF-8)
+    elif grep -q -a '<?xml' "$file"; then
+        newext="rbxmx"
+
+    # Binary but not readable
+    elif [[ "$encoding" != "utf-8" && "$mimetype" == "application/octet-stream" ]]; then
+        newext="rbxm"
+
+    # Images
+    elif [[ "$mimetype" == image/* ]]; then
+        newext="${mimetype#image/}"
+
+    # Audio
+    elif [[ "$mimetype" == audio/* ]]; then
+        newext="${mimetype#audio/}"
+
+    # Video and stream
+    elif [[ "$mimetype" == video/* ]]; then
+        newext="${mimetype#video/}"
+    elif [[ "$mimetype" == "application/vnd.apple.mpegurl" || "$mimetype" == "application/x-mpegURL" ]]; then
+        newext="m3u8"
+    elif [[ "$mimetype" == "video/MP2T" ]]; then
+        newext="ts"
+
+    else
+        newext="bin"
+    fi
+
+    currentext="${file##*.}"
+    filename="${file%.*}"
+    if [[ "$file" == "$filename" ]]; then
+        filename="$file"
+        currentext=""
+    fi
+
+    # Only rename if different
+    if [[ "$currentext" != "$newext" ]]; then
+        newpath="${filename}.${newext}"
+        echo "Renaming: $file → $newpath"
+        mv -f "$file" "$newpath"
+    fi
 }
 
-export -f detect_type
 export -f fix_file
 
-find "$root" -type f -name "*.txt" -o -name "*.bin" -o -name "*.dat" -o -name "*.*" -exec bash -c 'fix_file "$0"' {} \;
+# ✅ This handles ALL files, even those with no extension
+find "$root" -type f -exec bash -c 'fix_file "$0"' {} \;
