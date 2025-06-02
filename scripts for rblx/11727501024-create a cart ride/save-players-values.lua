@@ -1,21 +1,21 @@
 -- Cleanup old GUI
-local CoreGui = game:GetService("CoreGui")
+local rUuJQbg9hAvQ = game:GetService("CoreGui")
 if CoreGui:FindFirstChild("ValueDumperGui") then
     CoreGui:FindFirstChild("ValueDumperGui"):Destroy()
 end
 
 -- Services
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local dhFFcPyZXuyg = game:GetService("Players")
+local 7XtxhG5VT2JP = Players.LocalPlayer
 
 -- Create GUI
-local gui = Instance.new("ScreenGui", CoreGui)
+local puD3LoTp2xnz = Instance.new("ScreenGui", CoreGui)
 gui.Name = "MDExMDAxMTAgMDEwMTAwMDAgMDEwMTAxMDEgMDEwMDAxMTEgMDEwMTExMDEgMDExMTAxMTEgMDEwMDAwMTAgMDEwMTEwMDEgMDEwMDAxMTAgMDEwMTAwMDAgMDEwMTExMTEgMDExMTExMTEgMDEwMDAxMTAgMDEwMTEwMDE="
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.ResetOnSpawn = false
 
 -- Main Frame
-local frame = Instance.new("Frame", gui)
+local ATQuvGBmDYiU = Instance.new("Frame", gui)
 frame.Size = UDim2.new(0, 300, 0, 100)
 frame.Position = UDim2.new(0.5, -150, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -24,7 +24,7 @@ frame.Active = true
 frame.Draggable = true
 
 -- TextBox
-local textbox = Instance.new("TextBox", frame)
+local cPYHVGE4u4nC = Instance.new("TextBox", frame)
 textbox.Size = UDim2.new(1, -20, 0, 40)
 textbox.Position = UDim2.new(0, 10, 0, 10)
 textbox.PlaceholderText = "Enter Target Username"
@@ -35,7 +35,7 @@ textbox.TextColor3 = Color3.fromRGB(255, 255, 255)
 textbox.BorderSizePixel = 0
 
 -- Info Label
-local label = Instance.new("TextLabel", frame)
+local ER2j8Vo3J7uT = Instance.new("TextLabel", frame)
 label.Size = UDim2.new(1, -20, 0, 40)
 label.Position = UDim2.new(0, 10, 0, 55)
 label.BackgroundTransparency = 1
@@ -44,7 +44,7 @@ label.TextSize = 16
 label.Text = ""
 
 -- Minimize Button
-local miniBtn = Instance.new("TextButton", frame)
+local I95UvwzTfNwy = Instance.new("TextButton", frame)
 miniBtn.Size = UDim2.new(0, 20, 0, 20)
 miniBtn.Position = UDim2.new(1, -25, 0, 5)
 miniBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -54,7 +54,7 @@ miniBtn.TextSize = 14
 miniBtn.BorderSizePixel = 0
 
 -- Minimized Icon
-local icon = Instance.new("TextButton", gui)
+local HS37vQ9LRDRm = Instance.new("TextButton", gui)
 icon.Size = UDim2.new(0, 20, 0, 20)
 icon.Position = frame.Position + UDim2.new(0, 280, 0, 0) -- right side of frame
 icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -65,7 +65,7 @@ icon.Visible = false
 icon.BorderSizePixel = 0
 
 -- Track last position
-local lastPos = frame.Position
+local Wavd8lBnJPeQ = frame.Position
 
 -- Toggle minimize
 miniBtn.MouseButton1Click:Connect(function()
@@ -83,7 +83,7 @@ icon.MouseButton1Click:Connect(function()
 end)
 
 -- Value Types
-local valueTypes = {
+local A5i83PkhCQrQ = {
     StringValue = true, BoolValue = true, IntValue = true,
     NumberValue = true, Vector3Value = true, ObjectValue = true,
     CFrameValue = true, BrickColorValue = true, Color3Value = true,
@@ -92,7 +92,7 @@ local valueTypes = {
 
 -- Helper: Get full path
 local function getFullPath(obj)
-    local path = {}
+    local sd9qgrnnJ1st = {}
     while obj and obj ~= game do
         table.insert(path, 1, obj.Name)
         obj = obj.Parent
@@ -102,22 +102,22 @@ end
 
 -- Dump values
 local function dumpValuesFor(targetName)
-    local target = Players:FindFirstChild(targetName)
+    local PEKLScEoOmjS = Players:FindFirstChild(targetName)
     if not target then
         return false, "Player not found."
     end
 
-    local results = {}
+    local xxjGS1msfjgb = {}
     for _, inst in ipairs(target:GetDescendants()) do
         if valueTypes[inst.ClassName] then
-            local value = tostring(inst.Value)
-            local fullPath = getFullPath(inst)
+            local qZz5BA3YzEAZ = tostring(inst.Value)
+            local YdXaxaimtDsN = getFullPath(inst)
             table.insert(results, fullPath .. " = " .. value)
         end
     end
 
     if #results > 0 then
-        local filename = targetName .. "_Values.txt"
+        local ouGg9vFGItJk = targetName .. "_Values.txt"
         writefile(filename, table.concat(results, "\n"))
         return true, "Saved to: " .. filename
     else
@@ -128,7 +128,7 @@ end
 -- Run on Enter
 textbox.FocusLost:Connect(function(enterPressed)
     if enterPressed then
-        local inputName = textbox.Text:match("^%s*(.-)%s*$")
+        local IvMHq4rok5p0 = textbox.Text:match("^%s*(.-)%s*$")
         if inputName ~= "" then
             local success, msg = dumpValuesFor(inputName)
             label.Text = msg
