@@ -19,47 +19,46 @@ for file in "$dir"/**; do
       newext="rbxmx"
     elif grep -q "<roblox" "$file" && grep -q "Saved by" "$file"; then
       newext="rbxmx"
-    elif [[ "$headline" == version\ * ]]; then
+    elif [[ "$headline" =~ ^version[[:space:]]+[0-9]+ ]]; then
       newext="mesh"
     else
       newext="txt"
     fi
   else
-    headbytes=$(head -c 512 "$file")
-    sig4=$(echo "$headbytes" | cut -c1-4)
+    sig4=$(xxd -ps -l 4 "$file" | tr -d '\n' | tr '[:lower:]' '[:upper:]')
 
     case "$sig4" in
-      OggS)
+      4F676753)
         newext="ogg"
         ;;
-      fLaC)
+      664C6143)
         newext="flac"
         ;;
-      RIFF)
-        if echo "$headbytes" | grep -q "WAVE"; then
+      52494646)
+        if head -c 512 "$file" | grep -q "WAVE"; then
           newext="wav"
-        elif echo "$headbytes" | grep -q "WEBP"; then
+        elif head -c 512 "$file" | grep -q "WEBP"; then
           newext="webp"
         else
           newext="bin"
         fi
         ;;
-      PNG*)
+      89504E47)
         newext="png"
         ;;
-      GIF8)
+      47494638)
         newext="gif"
         ;;
-      %PDF)
+      25504446)
         newext="pdf"
         ;;
-      ID3*)
+      494433*)
         newext="mp3"
         ;;
       *)
-        if echo "$headbytes" | grep -q '#EXTM3U'; then
+        if head -c 512 "$file" | grep -q '#EXTM3U'; then
           newext="m3u8"
-        elif echo "$headbytes" | grep -q -E '^TS[a-zA-Z]'; then
+        elif head -c 512 "$file" | grep -q -E '^TS[a-zA-Z]'; then
           newext="ts"
         else
           newext="bin"
