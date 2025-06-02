@@ -1,48 +1,74 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# ===[ Input and Safety Check ]===
-file="$1"
+root="/storage/emulated/0/apps/roblox"
 
-# Ensure the file was passed in
-if [ -z "$file" ]; then
-  echo "Usage: $0 <filename>"
-  exit 1
-fi
+detect_type() {
+  file="$1"
 
-# Make sure file exists
-if [ ! -f "$file" ]; then
-  echo "Error: '$file' does not exist or is not a file"
-  exit 1
-fi
-
-# ===[ File Type Detection ]===
-type=$(file -b "$file")
-ext=".bin"  # default fallback extension
-
-# Match known types
-if echo "$type" | grep -qi "PNG image"; then
-  ext=".png"
-elif echo "$type" | grep -qi "JPEG image"; then
-  ext=".jpg"
-elif echo "$type" | grep -qi "GIF image"; then
-  ext=".gif"
-elif echo "$type" | grep -qi "Zip archive"; then
-  ext=".zip"
-elif echo "$type" | grep -qi "ASCII text"; then
-  # Pretty-printed JSON might show up as ASCII text
-  if python3 -c "import json; json.load(open('$file'))" 2>/dev/null; then
-    ext=".json"
-  else
-    ext=".txt"
+  # Detect JSON
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$file" 2>/dev/null; then
+    echo "json"
+    return
   fi
-# If file is binary but still valid JSON (edge case)
-elif python3 -c "import json; json.load(open('$file'))" 2>/dev/null; then
-  ext=".json"
-fi
 
-# ===[ Output ]===
-echo "Detected type: $type"
-echo "Using extension: $ext"
+  # Detect XML (RBXMX)
+  if grep -q '<roblox' "$file" 2>/dev/null; then
+    echo "rbxmx"
+    return
+  fi
 
-# Example: rename the file (uncomment this if desired)
-# mv "$file" "${file}${ext}"
+  # Detect M3U8
+  if grep -qE '^#EXTM3U' "$file" 2>/dev/null; then
+    echo "m3u8"
+    return
+  fi
+
+  # Detect TS (TypeScript)
+  if grep -qE '^(//|import )' "$file" 2>/dev/null; then
+    echo "ts"
+    return
+  fi
+
+  # Detect image/audio/video using magic number
+  mimetype=$(file -b --mime-type "$file")
+  case "$mimetype" in
+    image/png) echo "png" ;;
+    image/jpeg) echo "jpg" ;;
+    image/webp) echo "webp" ;;
+    audio/mpeg) echo "mp3" ;;
+    audio/x-wav) echo "wav" ;;
+    audio/ogg) echo "ogg" ;;
+    video/mp4) echo "mp4" ;;
+    video/webm) echo "webm" ;;
+    *) ;;
+  esac && return
+
+  # Fallback: non-UTF-8? Likely binary
+  if ! iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
+    echo "rbxm"
+    return
+  fi
+
+  echo "unknown"
+}
+
+fix_file() {
+  file="$1"
+  ext=$(detect_type "$file")
+
+  if [ "$ext" = "unknown" ]; then
+    echo "❓ Unknown: $file"
+    return
+  fi
+
+  new="${file%.*}.$ext"
+  if [ "$file" != "$new" ]; then
+    mv "$file" "$new"
+    echo "✅ Renamed: $file → $new"
+  fi
+}
+
+export -f detect_type
+export -f fix_file
+
+find "$root" -type f -name "*.txt" -o -name "*.bin" -o -name "*.dat" -o -name "*.*" -exec bash -c 'fix_file "$0"' {} \;
