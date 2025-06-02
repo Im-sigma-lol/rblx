@@ -1,7 +1,7 @@
 -- Cleanup old GUI
 local rUuJQbg9hAvQ = game:GetService("CoreGui")
-if CoreGui:FindFirstChild("ValueDumperGui") then
-    CoreGui:FindFirstChild("ValueDumperGui"):Destroy()
+if CoreGui:FindFirstChild("MDExMDAxMTAgMDEwMTAwMDAgMDEwMTAxMDEgMDEwMDAxMTEgMDEwMTExMDEgMDExMTAxMTEgMDEwMDAwMTAgMDEwMTEwMDEgMDEwMDAxMTAgMDEwMTAwMDAgMDEwMTExMTEgMDExMTExMTEgMDEwMDAxMTAgMDEwMTEwMDE=") then
+    CoreGui:FindFirstChild("MDExMDAxMTAgMDEwMTAwMDAgMDEwMTAxMDEgMDEwMDAxMTEgMDEwMTExMDEgMDExMTAxMTEgMDEwMDAwMTAgMDEwMTEwMDEgMDEwMDAxMTAgMDEwMTAwMDAgMDEwMTExMTEgMDExMTExMTEgMDEwMDAxMTAgMDEwMTEwMDE="):Destroy()
 end
 
 -- Services
