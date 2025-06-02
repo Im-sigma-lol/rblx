@@ -25,7 +25,7 @@ for file in "$dir"/**; do
       newext="txt"
     fi
   else
-    sig4=$(xxd -ps -l 4 "$file" | tr -d '\n' | tr '[:lower:]' '[:upper:]')
+    sig4=$(dd if="$file" bs=1 count=4 2>/dev/null | hexdump -v -e '/1 "%02X"')
 
     case "$sig4" in
       4F676753)
