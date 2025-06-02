@@ -1,28 +1,49 @@
-local targetName = "TargetPlayer" -- change this to the player you want to target
-local outputName = "Create a Cart ride" -- name of the output .txt file (with special chars)
+-- Create GUI in CoreGui
+local player = game:GetService("Players").LocalPlayer
+local CoreGui = game:GetService("CoreGui")
 
-local Players = game:GetService("Players")
-local target = Players:FindFirstChild(targetName)
-
-if not target then
-    warn("Target player not found.")
-    return
+-- Remove old GUI if exists
+if CoreGui:FindFirstChild("ValueDumperGui") then
+    CoreGui:FindFirstChild("ValueDumperGui"):Destroy()
 end
 
--- List of all Roblox ValueBase classes
+-- GUI Setup
+local ScreenGui = Instance.new("ScreenGui", CoreGui)
+ScreenGui.Name = "ValueDumperGui"
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 300, 0, 100)
+Frame.Position = UDim2.new(0.5, -150, 0.3, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.BorderSizePixel = 0
+
+local TextBox = Instance.new("TextBox", Frame)
+TextBox.Size = UDim2.new(1, -20, 0, 40)
+TextBox.Position = UDim2.new(0, 10, 0, 10)
+TextBox.PlaceholderText = "Enter Target Username"
+TextBox.Text = ""
+TextBox.TextSize = 18
+TextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+TextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextBox.BorderSizePixel = 0
+
+local InfoLabel = Instance.new("TextLabel", Frame)
+InfoLabel.Size = UDim2.new(1, -20, 0, 40)
+InfoLabel.Position = UDim2.new(0, 10, 0, 55)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+InfoLabel.TextSize = 16
+InfoLabel.Text = ""
+
+-- Value types
 local valueTypes = {
-    "StringValue", "BoolValue", "IntValue", "NumberValue",
-    "Vector3Value", "ObjectValue", "CFrameValue", "BrickColorValue",
-    "Color3Value", "FloatValue", "DoubleConstrainedValue"
+    StringValue = true, BoolValue = true, IntValue = true,
+    NumberValue = true, Vector3Value = true, ObjectValue = true,
+    CFrameValue = true, BrickColorValue = true, Color3Value = true,
+    FloatValue = true, DoubleConstrainedValue = true
 }
 
--- Turn list into a lookup table
-local valueTypeMap = {}
-for _, v in ipairs(valueTypes) do
-    valueTypeMap[v] = true
-end
-
--- Helper: Get full path
+-- Helper
 local function getFullPath(obj)
     local path = {}
     while obj and obj ~= game do
@@ -32,23 +53,41 @@ local function getFullPath(obj)
     return "/" .. table.concat(path, "/")
 end
 
--- Container for results
-local results = {}
+-- Dump values
+local function dumpValuesFor(targetName)
+    local Players = game:GetService("Players")
+    local target = Players:FindFirstChild(targetName)
+    if not target then
+        return false, "Player not found."
+    end
 
--- Search inside target (Character or Backpack, etc.)
-for _, inst in ipairs(target:GetDescendants()) do
-    if valueTypeMap[inst.ClassName] then
-        local value = tostring(inst.Value)
-        local fullPath = getFullPath(inst)
-        table.insert(results, fullPath .. " = " .. value)
+    local results = {}
+    for _, inst in ipairs(target:GetDescendants()) do
+        if valueTypes[inst.ClassName] then
+            local value = tostring(inst.Value)
+            local fullPath = getFullPath(inst)
+            table.insert(results, fullPath .. " = " .. value)
+        end
+    end
+
+    if #results > 0 then
+        local filename = targetName .. "_Values.txt"
+        writefile(filename, table.concat(results, "\n"))
+        return true, "Saved to: " .. filename
+    else
+        return false, "No values found."
     end
 end
 
--- Save result to file
-if #results > 0 then
-    local content = table.concat(results, "\n")
-    writefile(outputName .. ".txt", content)
-    print("Saved value data to " .. outputName .. ".txt")
-else
-    print("No value instances found under " .. targetName)
-end
+-- Bind enter key
+TextBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local inputName = TextBox.Text:match("^%s*(.-)%s*$")
+        if inputName ~= "" then
+            local success, msg = dumpValuesFor(inputName)
+            InfoLabel.Text = msg
+        else
+            InfoLabel.Text = "Please enter a username."
+        end
+    end
+end)
