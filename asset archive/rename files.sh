@@ -1,65 +1,39 @@
-#!/bin/bash
+#!/data/data/com.termux/files/usr/bin/bash
 
-BASE_DIR="/storage/emulated/0/Apps/Roblox"
+# Path to the file you want to check
+file="$1"
 
-rename_file_based_on_type() {
-    local filepath="$1"
+# Default extension
+ext=".bin"
 
-    # Use basic 'file' command
-    local info
-    info=$(file -b "$filepath" | tr '[:upper:]' '[:lower:]')
+# Use `file -b` to get basic description without file name prefix
+type=$(file -b "$file")
 
-    # Determine extension
-    local ext=""
-    if echo "$info" | grep -q 'jpeg'; then
-        ext="jpg"
-    elif echo "$info" | grep -q 'png'; then
-        ext="png"
-    elif echo "$info" | grep -q 'webp'; then
-        ext="webp"
-    elif echo "$info" | grep -q 'image'; then
-        ext="img"
-    elif echo "$info" | grep -q 'ogg'; then
-        ext="ogg"
-    elif echo "$info" | grep -q 'mpeg'; then
-        ext="mp3"
-    elif echo "$info" | grep -q 'audio'; then
-        ext="audio"
-    elif echo "$info" | grep -q 'video'; then
-        ext="mp4"
-    elif echo "$info" | grep -q 'json'; then
-        ext="json"
-    elif echo "$info" | grep -q 'xml'; then
-        # Check for UTF-8 to decide .rbxmx or just .xml
-        if file -b "$filepath" | grep -qi 'utf-8'; then
-            ext="rbxmx"
-        else
-            ext="xml"
-        fi
-    elif echo "$info" | grep -q 'ascii'; then
-        ext="txt"
-    elif echo "$info" | grep -q 'utf-8'; then
-        ext="txt"
-    elif echo "$info" | grep -q 'data'; then
-        ext="rbxm"
+# Detect known binary or image types
+if echo "$type" | grep -qi "PNG image"; then
+    ext=".png"
+elif echo "$type" | grep -qi "JPEG image"; then
+    ext=".jpg"
+elif echo "$type" | grep -qi "GIF image"; then
+    ext=".gif"
+elif echo "$type" | grep -qi "Zip archive"; then
+    ext=".zip"
+elif echo "$type" | grep -qi "ASCII text"; then
+    # Try parsing it as JSON using Python to verify if it's not just plain text
+    if python3 -c "import json; json.load(open('$file'))" 2>/dev/null; then
+        ext=".json"
     else
-        ext="bin"
+        ext=".txt"
     fi
+elif python3 -c "import json; json.load(open('$file'))" 2>/dev/null; then
+    # Fallback check for pretty-printed or text-encoded JSON
+    ext=".json"
+fi
 
-    # Strip extension from filename even if it already exists
-    local dir=$(dirname "$filepath")
-    local base=$(basename "$filepath")
-    local name="${base%.*}"
-    local newpath="$dir/$name.$ext"
+# Output detected type and extension
+echo "Detected type: $type"
+echo "Using extension: $ext"
 
-    # Only rename if needed
-    if [[ "$filepath" != "$newpath" ]]; then
-        echo "Renaming: $filepath → $newpath"
-        mv "$filepath" "$newpath"
-    fi
-}
-
-export -f rename_file_based_on_type
-
-# Recursively find all files and rename based on type
-find "$BASE_DIR" -type f -exec bash -c 'rename_file_based_on_type "$0"' {} \;
+# Rename or copy to desired name if needed
+# For example:
+# mv "$file" "${file}${ext}"
