@@ -10,18 +10,15 @@ fix_file() {
     dir="${file%/*}"
     ext="${base##*.}"
 
-    # If no extension, this will match the whole filename
     [[ "$ext" == "$base" ]] && ext=""
 
     newext=""
 
-    # Try byte pattern first
-    headbytes=$(head -c 512 "$file")
-
-    if echo "$headbytes" | grep -q "OggS"; then
+    # Avoid null-byte warnings by grepping directly from file
+    if head -c 4 "$file" | grep -q "OggS"; then
         newext="ogg"
 
-    elif echo "$headbytes" | grep -q '<!-- Saved by UniversalSynSaveInstance' && echo "$headbytes" | grep -q '<roblox version="4">'; then
+    elif head -c 512 "$file" | grep -q '<!-- Saved by UniversalSynSaveInstance' && head -c 512 "$file" | grep -q '<roblox version="4">'; then
         newext="rbxmx"
 
     elif grep -q -a "#EXTM3U" "$file"; then
@@ -63,12 +60,8 @@ fix_file() {
             esac
 
         elif echo "$info" | grep -qi "audio data"; then
-            case "$info" in
-                *MP3*) newext="mp3" ;;
-                *Ogg*) newext="ogg" ;;
-                *WAV*) newext="wav" ;;
-                *) newext="audio" ;;
-            esac
+            # Roblox only uses .ogg, fallback
+            newext="ogg"
 
         elif echo "$info" | grep -qi "video"; then
             case "$info" in
@@ -85,10 +78,7 @@ fix_file() {
         fi
     fi
 
-    # Skip if no change
-    if [[ "$ext" == "$newext" ]]; then
-        return
-    fi
+    [[ "$ext" == "$newext" ]] && return
 
     if [[ -n "$ext" ]]; then
         newname="${dir}/${base%.*}.${newext}"
