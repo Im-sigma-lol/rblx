@@ -30,7 +30,9 @@ asset_ids = set()
 if args.r:
     with open(args.r, "r", encoding="utf-8") as f:
         content = f.read()
+        # Extract both rbxassetid://123 and ?id=123 patterns
         asset_ids.update(re.findall(r"rbxassetid://(\d+)", content))
+        asset_ids.update(re.findall(r"[?&]id=(\d+)", content))
 
 # Function to handle rate limits
 def safe_get(url, headers, cookies=None, stream=False):
