@@ -13,7 +13,7 @@ end
 -- Run the module to register functions in getgenv()
 module()
 
-local file = "F3X/F3X.rbxm"
+local file = "F3X.rbxm"
 local url = "https://github.com/Im-sigma-lol/rblx/raw/refs/heads/main/scripts%20for%20rblx/universal/F3X/F3X.rbxm"
 
 -- Download if missing
