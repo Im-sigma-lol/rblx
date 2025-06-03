@@ -1,59 +1,68 @@
-local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
-local player = Players.LocalPlayer
 
 -- GUI Setup
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "LevelSpawnTextViewer"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+local gui = Instance.new("ScreenGui")
+gui.Name = "DebugTextViewer"
+gui.Parent = CoreGui
 
-local ScrollingFrame = Instance.new("ScrollingFrame")
-ScrollingFrame.Size = UDim2.new(0.4, 0, 0.6, 0)
-ScrollingFrame.Position = UDim2.new(0.3, 0, 0.2, 0)
-ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-ScrollingFrame.ScrollBarThickness = 10
-ScrollingFrame.BackgroundTransparency = 0.2
-ScrollingFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-ScrollingFrame.Parent = ScreenGui
+local frame = Instance.new("ScrollingFrame")
+frame.Size = UDim2.new(0.4, 0, 0.6, 0)
+frame.Position = UDim2.new(0.3, 0, 0.2, 0)
+frame.Parent = gui
+frame.CanvasSize = UDim2.new(0, 0, 0, 0)
+frame.ScrollBarThickness = 10
 
-local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Padding = UDim.new(0, 6)
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UIListLayout.Parent = ScrollingFrame
+local layout = Instance.new("UIListLayout", frame)
+layout.Padding = UDim.new(0, 4)
 
--- Add a label
-local function addTextLabel(text, path)
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -10, 0, 30)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.TextScaled = true
-	label.Font = Enum.Font.Code
-	label.Text = text .. "  [" .. path .. "]"
-	label.Parent = ScrollingFrame
+local function addText(msg)
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, -8, 0, 24)
+	lbl.BackgroundTransparency = 1
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.Font = Enum.Font.Code
+	lbl.TextSize = 16
+	lbl.TextColor3 = Color3.new(1, 1, 1)
+	lbl.Text = msg
+	lbl.Parent = frame
 end
 
--- Main logic
+-- Start Debug Scan
 local root = workspace:FindFirstChild("CartRideWorkspace")
-if root then
-	for _, model in ipairs(root:GetChildren()) do
-		if model:IsA("Model") and model.Name == "LevelSpawn" then
-			local part = model:FindFirstChild("LevelSpawn")
-			if part and part:IsA("BasePart") then
-				local bbg = part:FindFirstChild("BBG")
-				if bbg and bbg:IsA("BillboardGui") then
-					local textLabel = bbg:FindFirstChild("TextLabel")
-					if textLabel and textLabel:IsA("TextLabel") then
-						addTextLabel(textLabel.Text, textLabel:GetFullName())
-					end
+if not root then
+	addText("CartRideWorkspace not found.")
+	return
+end
+
+addText("Found CartRideWorkspace.")
+
+for _, model in ipairs(root:GetChildren()) do
+	if model:IsA("Model") and model.Name == "LevelSpawn" then
+		addText("Model: " .. model:GetFullName())
+
+		local part = model:FindFirstChild("LevelSpawn")
+		if part and part:IsA("BasePart") then
+			addText("  Found part: " .. part:GetFullName())
+
+			local bbg = part:FindFirstChild("BBG")
+			if bbg and bbg:IsA("BillboardGui") then
+				addText("    Found BBG")
+
+				local textLabel = bbg:FindFirstChild("TextLabel")
+				if textLabel and textLabel:IsA("TextLabel") then
+					addText("      Text: " .. textLabel.Text)
+				else
+					addText("      TextLabel missing or wrong class")
 				end
+			else
+				addText("    BBG missing or wrong type")
 			end
+		else
+			addText("  Part LevelSpawn missing or not a BasePart")
 		end
 	end
 end
 
--- Resize canvas after loading
+-- Resize canvas
 task.wait(0.1)
-ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 20)
+frame.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
