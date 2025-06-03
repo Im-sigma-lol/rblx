@@ -35,22 +35,25 @@ local function addTextLabel(text, path)
 	label.Parent = ScrollingFrame
 end
 
--- Find all LevelSpawn -> BBG -> TextLabel
+-- Main logic
 local root = workspace:FindFirstChild("CartRideWorkspace")
 if root then
-	for _, descendant in ipairs(root:GetDescendants()) do
-		if descendant:IsA("Model") and descendant.Name == "LevelSpawn" then
-			local bbg = descendant:FindFirstChild("BBG")
-			if bbg and bbg:IsA("SurfaceGui") then
-				local textLabel = bbg:FindFirstChild("TextLabel")
-				if textLabel and textLabel:IsA("TextLabel") then
-					addTextLabel(textLabel.Text, descendant:GetFullName())
+	for _, model in ipairs(root:GetChildren()) do
+		if model:IsA("Model") and model.Name == "LevelSpawn" then
+			local part = model:FindFirstChild("LevelSpawn")
+			if part and part:IsA("BasePart") then
+				local bbg = part:FindFirstChild("BBG")
+				if bbg and bbg:IsA("SurfaceGui") then
+					local textLabel = bbg:FindFirstChild("TextLabel")
+					if textLabel and textLabel:IsA("TextLabel") then
+						addTextLabel(textLabel.Text, textLabel:GetFullName())
+					end
 				end
 			end
 		end
 	end
 end
 
--- Auto-resize canvas
+-- Adjust canvas size
 task.wait(0.1)
 ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 20)
