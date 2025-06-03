@@ -14,7 +14,7 @@ end
 module()
 
 local file = "F3X.rbxm"
-local url = "raw.githubusercontent.com/Im-sigma-lol/rblx/refs/heads/main/scripts%20for%20rblx/universal/f3x/F3X.rbxm"
+local url = "http://raw.githubusercontent.com/Im-sigma-lol/rblx/refs/heads/main/scripts%20for%20rblx/universal/f3x/F3X.rbxm"
 
 -- Download if missing
 if not isfile(path) then
