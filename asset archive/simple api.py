@@ -13,58 +13,44 @@ HEADERS = {
     "User-Agent": "Roblox/WinInet",
     "Accept": "application/json",
 }
-BASE_SAVE_DIR = "/storage/emulated/0/log"
+
+# Argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument("-auth", help="ROBLOSECURITY cookie")
+parser.add_argument("-r", action="store_true", help="Enable recursive asset ID scan mode")
+parser.add_argument("-D", help="Directory (relative) to scan recursively for asset IDs")
+parser.add_argument("-DA", help="Directory (absolute) to scan recursively for asset IDs")
+parser.add_argument("-p", help="Output base path for downloads")
+args = parser.parse_args()
 
 # Sanitize filenames
 def sanitize(name):
     return re.sub(r'[\\/:*?"<>|]', '_', name)
 
-# Argument parser
-parser = argparse.ArgumentParser()
-parser.add_argument("-auth", help="ROBLOSECURITY cookie")
-parser.add_argument("-r", help="File containing rbxassetid:// references")
-parser.add_argument("-D", help="Directory to recursively scan for asset IDs (relative path)")
-parser.add_argument("-DA", help="Directory to recursively scan for asset IDs (absolute path)")
-args = parser.parse_args()
+# Default save directory is current working directory
+BASE_SAVE_DIR = os.path.abspath(args.p) if args.p else os.getcwd()
 
-# Asset ID set
-asset_ids = set()
-
-# Functions to extract IDs
-def extract_ids_from_text(text):
+# Extract all asset IDs from text
+def extract_ids_from_text(content):
     ids = set()
-    ids.update(re.findall(r"rbxassetid://(\d+)", text))
-    ids.update(re.findall(r"[?&]id=(\d+)", text))
+    ids.update(re.findall(r"rbxassetid://(\d+)", content))
+    ids.update(re.findall(r"[?&]id=(\d+)", content))
     return ids
 
-def extract_ids_from_directory(directory):
+# Recursively scan directory for asset IDs
+def scan_directory(path):
     found_ids = set()
-    for root, _, files in os.walk(directory):
+    for root, _, files in os.walk(path):
         for file in files:
             try:
                 full_path = os.path.join(root, file)
                 with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                     found_ids.update(extract_ids_from_text(f.read()))
             except Exception as e:
-                print(f"[!] Failed to read {file}: {e}")
+                print(f"[!] Failed reading {file}: {e}")
     return found_ids
 
-# Load asset IDs
-if args.r:
-    try:
-        with open(args.r, "r", encoding="utf-8") as f:
-            asset_ids.update(extract_ids_from_text(f.read()))
-    except Exception as e:
-        print(f"[!] Failed to read file {args.r}: {e}")
-
-if args.D:
-    rel_dir = os.path.abspath(args.D)
-    asset_ids.update(extract_ids_from_directory(rel_dir))
-
-if args.DA:
-    asset_ids.update(extract_ids_from_directory(args.DA))
-
-# Handle rate limits
+# HTTP rate-limited request
 def safe_get(url, headers, cookies=None, stream=False):
     retries = 0
     while retries < 5:
@@ -77,18 +63,18 @@ def safe_get(url, headers, cookies=None, stream=False):
             return r
     raise Exception(f"Failed after 5 retries: {url}")
 
-# Hashing
+# SHA256 hash for content
 def hash_content(data):
     return hashlib.sha256(data).hexdigest()
 
-# Download asset
+# Download single asset
 def download_asset(asset_id, auth_cookie=None):
     print(f"[#] Processing Asset ID: {asset_id}")
     cookies = {}
     if auth_cookie:
         cookies[".ROBLOSECURITY"] = auth_cookie
 
-    # Get economy info
+    # Get economy metadata
     econ_url = f"https://economy.roblox.com/v2/assets/{asset_id}/details"
     econ_resp = safe_get(econ_url, HEADERS, cookies)
     if econ_resp.status_code != 200:
@@ -104,7 +90,7 @@ def download_asset(asset_id, auth_cookie=None):
     with open(os.path.join(base_path, "economy.json"), "w", encoding="utf-8") as f:
         json.dump(econ_data, f, indent=2)
 
-    # Version loop
+    # Versioning loop
     version = 1
     while True:
         version_path = os.path.join(base_path, "version", str(version))
@@ -116,7 +102,7 @@ def download_asset(asset_id, auth_cookie=None):
             print(f"[*] No more versions for {asset_id}")
             break
         elif asset_resp.status_code == 401:
-            print(f"[!] HTTP 401 Unauthorized: {asset_url}")
+            print(f"[!] HTTP 401: {asset_url}")
             break
 
         asset_data = asset_resp.json()
@@ -139,11 +125,13 @@ def download_asset(asset_id, auth_cookie=None):
         raw = file_resp.content
         sha = hash_content(raw)
 
+        # Guess file extension
         parsed = urlparse(download_url)
         ext = os.path.splitext(parsed.path)[1].split("?")[0] or ".bin"
         filename = f"{sha}{ext}"
         filepath = os.path.join(version_path, filename)
 
+        # Deduplication check
         if not os.path.exists(filepath):
             with open(filepath, "wb") as f:
                 f.write(raw)
@@ -153,9 +141,24 @@ def download_asset(asset_id, auth_cookie=None):
 
         version += 1
 
-# Main
+# Main logic
+asset_ids = set()
+
+if args.r:
+    if args.D:
+        scan_path = os.path.abspath(os.path.join(os.getcwd(), args.D))
+        if os.path.isdir(scan_path):
+            asset_ids.update(scan_directory(scan_path))
+        else:
+            print(f"[!] -D path not found: {scan_path}")
+    if args.DA:
+        if os.path.isdir(args.DA):
+            asset_ids.update(scan_directory(args.DA))
+        else:
+            print(f"[!] -DA path not found: {args.DA}")
+
 if not asset_ids:
-    print("[!] No asset IDs found. Use -r, -D, or -DA to provide input.")
+    print("[!] No asset IDs found. Use -r with -D or -DA to scan directories.")
     sys.exit(1)
 
 for aid in asset_ids:
