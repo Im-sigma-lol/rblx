@@ -23,41 +23,48 @@ def sanitize(name):
 parser = argparse.ArgumentParser()
 parser.add_argument("-auth", help="ROBLOSECURITY cookie")
 parser.add_argument("-r", help="File containing rbxassetid:// references")
-parser.add_argument("-D", "--directory", help="Folder containing multiple files to scan for asset IDs")
+parser.add_argument("-D", help="Directory to recursively scan for asset IDs (relative path)")
+parser.add_argument("-DA", help="Directory to recursively scan for asset IDs (absolute path)")
 args = parser.parse_args()
 
-# Load asset IDs from single file
+# Asset ID set
 asset_ids = set()
-def extract_asset_ids_from_text(text):
+
+# Functions to extract IDs
+def extract_ids_from_text(text):
     ids = set()
     ids.update(re.findall(r"rbxassetid://(\d+)", text))
     ids.update(re.findall(r"[?&]id=(\d+)", text))
     return ids
 
-if args.r:
-    with open(args.r, "r", encoding="utf-8") as f:
-        asset_ids.update(extract_asset_ids_from_text(f.read()))
-
-# Load from directory
-if args.directory is not None:
-    dir_path = args.directory
-    if dir_path == "":
-        dir_path = "."  # current directory
-    dir_path = os.path.abspath(dir_path)
-    if not os.path.isdir(dir_path):
-        print(f"[!] Directory not found: {dir_path}")
-        sys.exit(1)
-
-    for fname in os.listdir(dir_path):
-        fpath = os.path.join(dir_path, fname)
-        if os.path.isfile(fpath):
+def extract_ids_from_directory(directory):
+    found_ids = set()
+    for root, _, files in os.walk(directory):
+        for file in files:
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    asset_ids.update(extract_asset_ids_from_text(f.read()))
+                full_path = os.path.join(root, file)
+                with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                    found_ids.update(extract_ids_from_text(f.read()))
             except Exception as e:
-                print(f"[!] Skipped {fname}: {e}")
+                print(f"[!] Failed to read {file}: {e}")
+    return found_ids
 
-# Function to handle rate limits
+# Load asset IDs
+if args.r:
+    try:
+        with open(args.r, "r", encoding="utf-8") as f:
+            asset_ids.update(extract_ids_from_text(f.read()))
+    except Exception as e:
+        print(f"[!] Failed to read file {args.r}: {e}")
+
+if args.D:
+    rel_dir = os.path.abspath(args.D)
+    asset_ids.update(extract_ids_from_directory(rel_dir))
+
+if args.DA:
+    asset_ids.update(extract_ids_from_directory(args.DA))
+
+# Handle rate limits
 def safe_get(url, headers, cookies=None, stream=False):
     retries = 0
     while retries < 5:
@@ -70,15 +77,18 @@ def safe_get(url, headers, cookies=None, stream=False):
             return r
     raise Exception(f"Failed after 5 retries: {url}")
 
+# Hashing
 def hash_content(data):
     return hashlib.sha256(data).hexdigest()
 
+# Download asset
 def download_asset(asset_id, auth_cookie=None):
     print(f"[#] Processing Asset ID: {asset_id}")
     cookies = {}
     if auth_cookie:
         cookies[".ROBLOSECURITY"] = auth_cookie
 
+    # Get economy info
     econ_url = f"https://economy.roblox.com/v2/assets/{asset_id}/details"
     econ_resp = safe_get(econ_url, HEADERS, cookies)
     if econ_resp.status_code != 200:
@@ -94,6 +104,7 @@ def download_asset(asset_id, auth_cookie=None):
     with open(os.path.join(base_path, "economy.json"), "w", encoding="utf-8") as f:
         json.dump(econ_data, f, indent=2)
 
+    # Version loop
     version = 1
     while True:
         version_path = os.path.join(base_path, "version", str(version))
@@ -105,7 +116,7 @@ def download_asset(asset_id, auth_cookie=None):
             print(f"[*] No more versions for {asset_id}")
             break
         elif asset_resp.status_code == 401:
-            print(f"[!] HTTP 401: {asset_url}")
+            print(f"[!] HTTP 401 Unauthorized: {asset_url}")
             break
 
         asset_data = asset_resp.json()
@@ -127,6 +138,7 @@ def download_asset(asset_id, auth_cookie=None):
 
         raw = file_resp.content
         sha = hash_content(raw)
+
         parsed = urlparse(download_url)
         ext = os.path.splitext(parsed.path)[1].split("?")[0] or ".bin"
         filename = f"{sha}{ext}"
@@ -141,9 +153,9 @@ def download_asset(asset_id, auth_cookie=None):
 
         version += 1
 
-# Main logic
+# Main
 if not asset_ids:
-    print("[!] No asset IDs found. Use -r or -D.")
+    print("[!] No asset IDs found. Use -r, -D, or -DA to provide input.")
     sys.exit(1)
 
 for aid in asset_ids:
