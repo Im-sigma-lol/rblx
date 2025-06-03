@@ -43,7 +43,7 @@ if root then
 			local part = model:FindFirstChild("LevelSpawn")
 			if part and part:IsA("BasePart") then
 				local bbg = part:FindFirstChild("BBG")
-				if bbg and bbg:IsA("SurfaceGui") then
+				if bbg and bbg:IsA("BillboardGui") then
 					local textLabel = bbg:FindFirstChild("TextLabel")
 					if textLabel and textLabel:IsA("TextLabel") then
 						addTextLabel(textLabel.Text, textLabel:GetFullName())
@@ -54,6 +54,6 @@ if root then
 	end
 end
 
--- Adjust canvas size
+-- Resize canvas after loading
 task.wait(0.1)
 ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 20)
