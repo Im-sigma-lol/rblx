@@ -24,9 +24,10 @@ parser.add_argument("-p", help="Output base path for downloads")
 args = parser.parse_args()
 
 # Sanitize filenames
+# Sanitize filenames
 def sanitize(name):
-    return re.sub(r'[\\/:*?"<>|]', '_', name)
-
+    name = re.sub(r'[\\/:*?"<>|\t\r\n]', '_', name)
+    return name.strip()
 # Default save directory is current working directory
 BASE_SAVE_DIR = os.path.abspath(args.p) if args.p else os.getcwd()
 
