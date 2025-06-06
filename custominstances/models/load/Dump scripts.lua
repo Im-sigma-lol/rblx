@@ -8,6 +8,10 @@ end
 
 model.Parent = workspace
 
+if not isfolder("dumped_scripts") then
+    makefolder("dumped_scripts")
+end
+
 local function sanitizeName(name)
     return name:gsub("[^%w_%-]", "_")
 end
@@ -23,8 +27,10 @@ local function getAllScripts(parent)
 end
 
 local scripts = getAllScripts(model)
+print("Found", #scripts, "scripts to dump")
 
 for _, script in ipairs(scripts) do
+    print("Dumping:", script:GetFullName())
     local success, source = pcall(function()
         return script.Source
     end)
@@ -32,9 +38,14 @@ for _, script in ipairs(scripts) do
     if success and source then
         local name = sanitizeName(script:GetFullName())
         local filename = "dumped_scripts/" .. name .. ".lua"
-        pcall(function()
+        local ok, err = pcall(function()
             writefile(filename, source)
         end)
+        if ok then
+            print("Wrote to:", filename)
+        else
+            warn("Failed to write to file:", filename, err)
+        end
     else
         warn("Failed to access source of", script:GetFullName())
     end
