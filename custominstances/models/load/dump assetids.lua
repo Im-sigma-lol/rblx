@@ -8,36 +8,50 @@ end
 
 model.Parent = workspace
 
-local function sanitizeName(name)
-    return name:gsub("[^%w_%-]", "_")
+local HttpService = game:GetService("HttpService")
+local assetIds = {}
+
+local function extractIdsFromValue(value)
+    local results = {}
+    -- Find all number-only strings
+    for id in tostring(value):gmatch("%f[%d](%d+)%f[%D]") do
+        table.insert(results, id)
+    end
+    return results
 end
 
-local function getAllScripts(parent)
-    local scripts = {}
-    for _, v in ipairs(parent:GetDescendants()) do
-        if v:IsA("LuaSourceContainer") then
-            table.insert(scripts, v)
+for _, obj in ipairs(model:GetDescendants()) do
+    for _, prop in ipairs(obj:GetAttributes()) do
+        local value = obj:GetAttribute(prop)
+        for _, id in ipairs(extractIdsFromValue(value)) do
+            assetIds[id] = true
         end
     end
-    return scripts
-end
 
-local scripts = getAllScripts(model)
-
-for _, script in ipairs(scripts) do
-    local success, source = pcall(function()
-        return script.Source
-    end)
-
-    if success and source then
-        local name = sanitizeName(script:GetFullName())
-        local filename = "dumped_scripts/" .. name .. ".lua"
+    for _, prop in ipairs({"Texture", "MeshId", "SoundId", "AnimationId", "Source", "Image", "LinkedSource"}) do
         pcall(function()
-            writefile(filename, source)
+            if obj[prop] then
+                for _, id in ipairs(extractIdsFromValue(obj[prop])) do
+                    assetIds[id] = true
+                end
+            end
         end)
-    else
-        warn("Failed to access source of", script:GetFullName())
     end
 end
 
-print("Script dumping complete.")
+-- Convert set to sorted list
+local idList = {}
+for id in pairs(assetIds) do
+    table.insert(idList, id)
+end
+table.sort(idList)
+
+-- Write to file
+local lines = {}
+for _, id in ipairs(idList) do
+    table.insert(lines, "rbxassetid://" .. id)
+end
+
+writefile("dumped_asset_ids.txt", table.concat(lines, "\n"))
+
+print("Asset ID dump complete.")
