@@ -1,19 +1,16 @@
 local path = "5.rbxm"
-local model = game:GetObjects(getcustomasset(path))[1]
 
-if not model then
-    warn("Failed to load model")
-    return
-end
+-- Create a temporary folder to hold all loaded objects
+local tmpFolder = Instance.new("Folder")
+tmpFolder.Name = "TempLoadedRBXM_" .. tostring(tick()):gsub("%.", "_")
+tmpFolder.Parent = workspace
 
-model.Parent = workspace
+-- Load all objects from the RBXM file
+local objs = game:GetObjects(getcustomasset(path))
+print("Loaded", #objs, "objects")
 
-if not isfolder("dumped_scripts") then
-    makefolder("dumped_scripts")
-end
-
-local function sanitizeName(name)
-    return name:gsub("[^%w_%-]", "_")
+for i, obj in ipairs(objs) do
+    obj.Parent = tmpFolder
 end
 
 local function getAllScripts(parent)
@@ -26,28 +23,24 @@ local function getAllScripts(parent)
     return scripts
 end
 
-local scripts = getAllScripts(model)
-print("Found", #scripts, "scripts to dump")
+local allScripts = getAllScripts(tmpFolder)
+print("Found", #allScripts, "scripts in temp folder")
 
-for _, script in ipairs(scripts) do
-    print("Dumping:", script:GetFullName())
-    local success, source = pcall(function()
-        return script.Source
-    end)
+local function sanitizeName(name)
+    return name:gsub("[^%w_%-]", "_")
+end
 
+for _, script in ipairs(allScripts) do
+    local success, source = pcall(function() return script.Source end)
     if success and source then
         local name = sanitizeName(script:GetFullName())
         local filename = "dumped_scripts/" .. name .. ".lua"
-        local ok, err = pcall(function()
+        pcall(function()
             writefile(filename, source)
         end)
-        if ok then
-            print("Wrote to:", filename)
-        else
-            warn("Failed to write to file:", filename, err)
-        end
+        print("Dumped:", filename)
     else
-        warn("Failed to access source of", script:GetFullName())
+        warn("Failed to get source of", script:GetFullName())
     end
 end
 
