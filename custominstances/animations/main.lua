@@ -1,45 +1,29 @@
--- GUI button (you need to define or insert this somewhere in your UI)
-local HeadThrow = yourButtonReferenceHere -- replace with actual TextButton
-local loc = Color3.fromRGB(255, 0, 0) -- example toggle color
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
 
--- Load local .rbxm animation
-local AnimModel = game:GetObjects(getcustomasset("anim.rbxm"))[1]
-
--- Try to extract Animation instance
-local Anim
-if AnimModel:IsA("Animation") then
-    Anim = AnimModel
+-- Step 1: Load main.rbxm and parent it to Workspace
+local mainPath = "main.rbxm"
+local mainModel = game:GetObjects(getcustomasset(mainPath))[1]
+if mainModel then
+    mainModel.Parent = workspace
 else
-    Anim = AnimModel:FindFirstChildOfClass("Animation")
-end
-
-if not Anim then
-    warn("No Animation found in anim.rbxm!")
+    warn("Failed to load main.rbxm")
     return
 end
 
--- Load animation onto humanoid
-local Player = game.Players.LocalPlayer
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
-local track = Humanoid:LoadAnimation(Anim)
+-- Step 2: Locate the animation instance inside workspace.freespirit
+local animInstance = workspace:FindFirstChild("freespirit")
+if not animInstance or not animInstance:IsA("Animation") then
+    warn("workspace.freespirit is missing or not an Animation")
+    return
+end
 
--- Toggle animation
-local HeadThrowACTIVE = false
+-- Step 3: Replace AnimationId with path to local anim.rbxm
+local animAssetPath = getcustomasset("anim.rbxm")
+animInstance.AnimationId = animAssetPath -- This simulates a fake AnimationId for client-side use
 
-HeadThrow.MouseButton1Click:Connect(function()
-    HeadThrowACTIVE = not HeadThrowACTIVE
-    if HeadThrowACTIVE then
-        HeadThrow.BackgroundColor3 = loc
-        task.spawn(function()
-            while HeadThrowACTIVE do
-                if not track.IsPlaying then
-                    track:Play(0.1, 1, 1)
-                end
-                task.wait()
-            end
-        end)
-    else
-        track:Stop()
-    end
-end)
+-- Step 4: Load and play the animation on the local humanoid
+local animTrack = humanoid:LoadAnimation(animInstance)
+animTrack:Play()
