@@ -1,47 +1,79 @@
 local path = "5.rbxm"
 
--- Create a temporary folder to hold all loaded objects
-local tmpFolder = Instance.new("Folder")
-tmpFolder.Name = "TempLoadedRBXM_" .. tostring(tick()):gsub("%.", "_")
-tmpFolder.Parent = workspace
+-- Make a temp container for loaded objects
+local container = Instance.new("Folder")
+container.Name = "Temp_" .. tick()
+container.Parent = workspace
 
--- Load all objects from the RBXM file
-local objs = game:GetObjects(getcustomasset(path))
-print("Loaded", #objs, "objects")
-
-for i, obj in ipairs(objs) do
-    obj.Parent = tmpFolder
+-- Load objects into container
+local objects = game:GetObjects(getcustomasset(path))
+for _, obj in ipairs(objects) do
+    obj.Parent = container
 end
 
-local function getAllScripts(parent)
-    local scripts = {}
-    for _, v in ipairs(parent:GetDescendants()) do
-        if v:IsA("LuaSourceContainer") then
-            table.insert(scripts, v)
+-- Get all LuaSourceContainer descendants
+local function getAllScripts(root)
+    local found = {}
+    for _, obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("LuaSourceContainer") then
+            table.insert(found, obj)
         end
     end
-    return scripts
+    return found
 end
 
-local allScripts = getAllScripts(tmpFolder)
-print("Found", #allScripts, "scripts in temp folder")
-
-local function sanitizeName(name)
-    return name:gsub("[^%w_%-]", "_")
+-- Clean filename characters
+local function sanitize(str)
+    return str:gsub("[^%w%-%._]", "_")
 end
 
-for _, script in ipairs(allScripts) do
-    local success, source = pcall(function() return script.Source end)
-    if success and source then
-        local name = sanitizeName(script:GetFullName())
-        local filename = "dumped_scripts/" .. name .. ".lua"
+-- Retry getting Source up to 3 times
+local function safeGetSource(script)
+    for i = 1, 3 do
+        local success, result = pcall(function() return script.Source end)
+        if success and result and #result > 0 then
+            return result
+        end
+        wait(0.05)
+    end
+    return nil
+end
+
+-- Get place id folder
+local placeFolder = "dumped_scripts/" .. tostring(game.PlaceId or "UnknownPlaceId")
+if not isfolder(placeFolder) then
+    makefolder(placeFolder)
+end
+
+-- Track used filenames to avoid collisions
+local usedNames = {}
+
+-- Dump scripts
+local scripts = getAllScripts(container)
+local totalDumped = 0
+local totalFailed = 0
+
+for _, script in ipairs(scripts) do
+    local source = safeGetSource(script)
+    if source then
+        local baseName = sanitize(script:GetFullName())
+        local name = baseName
+        local index = 1
+        while usedNames[name] do
+            name = baseName .. "_" .. tostring(index)
+            index += 1
+        end
+        usedNames[name] = true
+
+        local filePath = placeFolder .. "/" .. name .. ".lua"
         pcall(function()
-            writefile(filename, source)
+            writefile(filePath, source)
         end)
-        print("Dumped:", filename)
+        totalDumped += 1
     else
-        warn("Failed to get source of", script:GetFullName())
+        warn("Failed to dump script:", script:GetFullName())
+        totalFailed += 1
     end
 end
 
-print("Script dumping complete.")
+print("Done. Scripts dumped:", totalDumped, "| Failed:", totalFailed)
