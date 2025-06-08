@@ -1,0 +1,29 @@
+-- LocalScript (e.g., StarterPlayerScripts)
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+-- Wait for character to load
+local function getCharacter()
+    local char = player.Character or player.CharacterAdded:Wait()
+    repeat task.wait() until char:FindFirstChild("HumanoidRootPart")
+    return char
+end
+
+local character = getCharacter()
+local position = character.HumanoidRootPart.Position
+
+-- Create MeshPart
+local meshPart = Instance.new("MeshPart")
+meshPart.Name = "CustomMesh"
+meshPart.Anchored = true
+meshPart.CanCollide = true
+meshPart.Size = Vector3.new(4, 4, 4) -- Adjust to match mesh if needed
+meshPart.Position = position + Vector3.new(0, 5, 0) -- Offset so it spawns above the player
+
+-- Set Mesh and Texture
+meshPart.MeshId = getcustomasset("1.mesh")
+meshPart.TextureID = getcustomasset("1.png")
+
+-- Parent it to workspace
+meshPart.Parent = workspace
