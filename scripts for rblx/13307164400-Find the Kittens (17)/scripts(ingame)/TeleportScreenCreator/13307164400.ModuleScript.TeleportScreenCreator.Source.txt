@@ -1,0 +1,38 @@
+-- Decompiler will be improved VERY SOON!
+-- Decompiled with Konstant V2.1, a fast Luau decompiler made in Luau by plusgiant5 (https://discord.gg/brNTY8nX8t)
+-- Decompiled on 2025-06-12 13:05:55
+-- Luau version 6, Types version 3
+-- Time taken: 0.001392 seconds
+
+return function() -- Line 3
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.Name = "SoftShutdownGui"
+	ScreenGui.DisplayOrder = 100
+	local Frame_upvr = Instance.new("Frame")
+	Frame_upvr.BackgroundColor3 = Color3.new(0.122698, 0.711009, 0.976822)
+	Frame_upvr.Position = UDim2.new(-0.5, 0, -0.5, 0)
+	Frame_upvr.Size = UDim2.new(2, 0, 2, 0)
+	Frame_upvr.ZIndex = 10
+	Frame_upvr.Parent = ScreenGui
+	local function CreateTextLabel(arg1, arg2, arg3) -- Line 16
+		--[[ Upvalues[1]:
+			[1]: Frame_upvr (readonly)
+		]]
+		local TextLabel = Instance.new("TextLabel")
+		TextLabel.BackgroundTransparency = 1
+		TextLabel.Size = arg1
+		TextLabel.Position = arg2
+		TextLabel.Text = arg3
+		TextLabel.ZIndex = 10
+		TextLabel.Font = "SourceSansBold"
+		TextLabel.TextScaled = true
+		TextLabel.TextColor3 = Color3.new(1, 1, 1)
+		TextLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+		TextLabel.TextStrokeTransparency = 0
+		TextLabel.Parent = Frame_upvr
+	end
+	CreateTextLabel(UDim2.new(0.5, 0, 0.1, 0), UDim2.new(0.25, 0, 0.4, 0), "REBOOTING SERVERS FOR AN UPDATE")
+	CreateTextLabel(UDim2.new(0.5, 0, 0.05, 0), UDim2.new(0.25, 0, 0.475, 0), "You will be teleported to a new server")
+	CreateTextLabel(UDim2.new(0.5, 0, 0.03, 0), UDim2.new(0.25, 0, 0.55, 0), "This may take a few minutes")
+	return ScreenGui, Frame_upvr
+end
