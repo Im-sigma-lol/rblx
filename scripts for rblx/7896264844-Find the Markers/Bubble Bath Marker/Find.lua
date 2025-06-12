@@ -1,3 +1,6 @@
+-- Get HRP
+local hrp = game.Players.LocalPlayer.Character:WaitForChild("HumanoidRootPart")
+
 -- Enable quest progression states
 local panelopen = game.ReplicatedStorage:FindFirstChild("panelopen")
 if panelopen then panelopen.Parent = workspace end
@@ -39,6 +42,7 @@ if grate and grate:FindFirstChild("Interact") then
         prompt.HoldDuration = 0
     end
 end
+
 -- Fire touch on all Parts in Bubble Bath Marker
 for _, child in pairs(workspace["Bubble Bath Marker"]:GetChildren()) do
     if child:IsA("BasePart") and child.Name == "Part" then
@@ -50,5 +54,3 @@ for _, child in pairs(workspace["Bubble Bath Marker"]:GetChildren()) do
         end
     end
 end
-
--- Return to original position
