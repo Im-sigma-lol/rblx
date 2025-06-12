@@ -39,12 +39,6 @@ if grate and grate:FindFirstChild("Interact") then
         prompt.HoldDuration = 0
     end
 end
-local hrp = game.Players.LocalPlayer.Character.HumanoidRootPart
-local original = hrp.CFrame
-
--- Go to  position
-hrp.CFrame = CFrame.new(-40, 28, -197)
-
 -- Fire touch on all Parts in Bubble Bath Marker
 for _, child in pairs(workspace["Bubble Bath Marker"]:GetChildren()) do
     if child:IsA("BasePart") and child.Name == "Part" then
