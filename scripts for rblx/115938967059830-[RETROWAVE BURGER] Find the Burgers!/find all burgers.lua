@@ -1,18 +1,28 @@
-local player = game:GetService("Players").LocalPlayer
-local ownedFolder = player:WaitForChild("Burgers")
-local burgersFolder = workspace:WaitForChild("Burgers")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- Function to award unowned burgers
+local function awardUnownedBurgers()
+	-- Get the local player and necessary services
+	local player = game:GetService("Players").LocalPlayer
+	local ownedBurgers = player:WaitForChild("Burgers")
+	local allBurgers = workspace:WaitForChild("Burgers")
+	local remotes = game:GetService("ReplicatedStorage").Remotes
 
--- Lookup table of owned burger names
-local ownedNames = {}
-for _, burger in ipairs(ownedFolder:GetChildren()) do
-	ownedNames[burger.Name] = true
-end
+	-- Create a table to store the names of owned burgers
+	local ownedBurgerNames = {}
+	for _, burger in ipairs(ownedBurgers:GetChildren()) do
+		ownedBurgerNames[burger.Name] = true
+	end
 
--- Loop through burgers in Workspace and fire remote for unowned ones
-for _, burger in ipairs(burgersFolder:GetChildren()) do
-	if burger:IsA("BasePart") and not ownedNames[burger.Name] then
-		ReplicatedStorage.Remotes.AwardRobloxian:FireServer(burger)
-		wait(0.1) -- slight delay to avoid spam detection
+	-- Loop through all burgers in the workspace
+	for _, burger in ipairs(allBurgers:GetChildren()) do
+		-- Check if the burger is a BasePart and not already owned
+		if burger:IsA("BasePart") and not ownedBurgerNames[burger.Name] then
+			-- Fire the remote event to award the burger
+			remotes.AwardRobloxian:FireServer(burger)
+			-- Wait briefly to avoid spam detection
+			wait(0.1)
+		end
 	end
 end
+
+-- Execute the function
+awardUnownedBurgers()
