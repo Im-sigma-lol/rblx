@@ -52,5 +52,3 @@ for _, child in pairs(workspace["Bubble Bath Marker"]:GetChildren()) do
 end
 
 -- Return to original position
-wait(0.05)
-hrp.CFrame = original
