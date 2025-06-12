@@ -1,6 +1,3 @@
--- Get HRP
-local hrp = game.Players.LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-
 -- Enable quest progression states
 local panelopen = game.ReplicatedStorage:FindFirstChild("panelopen")
 if panelopen then panelopen.Parent = workspace end
@@ -42,6 +39,11 @@ if grate and grate:FindFirstChild("Interact") then
         prompt.HoldDuration = 0
     end
 end
+local hrp = game.Players.LocalPlayer.Character.HumanoidRootPart
+local original = hrp.CFrame
+
+-- Go to  position
+hrp.CFrame = CFrame.new(-40, 28, -197)
 
 -- Fire touch on all Parts in Bubble Bath Marker
 for _, child in pairs(workspace["Bubble Bath Marker"]:GetChildren()) do
@@ -49,8 +51,12 @@ for _, child in pairs(workspace["Bubble Bath Marker"]:GetChildren()) do
         local ti = child:FindFirstChildOfClass("TouchTransmitter")
         if ti then
             firetouchinterest(hrp, child, 0)
-            wait(0.05)
+            wait(0.1)
             firetouchinterest(hrp, child, 1)
         end
     end
 end
+
+-- Return to original position
+wait(0.5)
+hrp.CFrame = original
