@@ -1,6 +1,3 @@
-RRXeIJiCAF = true
-game:GetService("ReplicatedStorage"):WaitForChild("8zCIoLRZXpQ2ybFJgeH").Value = tostring(math.random(1000000, 10000000))
----Key System
 local data = {}
 
 local system_domains = {
